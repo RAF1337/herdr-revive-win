@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { withShellBlock, winHookCommand, shellBlock, hasCli } from "../mods/revive-win/revive.mjs";
@@ -62,9 +62,9 @@ function home({ settings = PERSON, profile = null, config = null } = {}) {
     'if (a === "server" && b === "status") { if (!process.env.FAKE_CORE_UP) process.exit(1); console.log(JSON.stringify({ pid: 4242 })); }',
   ].join("\n") + "\n");
   const engineWith = (extra, ...args) => {
-    const env = { ...process.env, USERPROFILE: h, HOME: h, APPDATA: appdata, REVIVE_PROFILE: profileFile, REVIVE_HC: hc, ...extra };
+    const env = { ...process.env, USERPROFILE: h, HOME: h, APPDATA: appdata, REVIVE_PROFILE: profileFile, REVIVE_HC: hc };
     for (const k of ["CLAUDE_CONFIG_DIR", "HC_TERMINAL_ID", "HC_TERMINAL_SOCKET", "HC_SCOPE", "CODEX_HOME", "PI_CODING_AGENT_DIR"]) delete env[k];
-    return spawnSync(process.execPath, [ENGINE, ...args], { encoding: "utf8", env, timeout: 60_000 });
+    return spawnSync(process.execPath, [ENGINE, ...args], { encoding: "utf8", env: { ...env, ...extra }, timeout: 60_000 });
   };
   const engine = (...args) => engineWith({}, ...args);
   return { root, h, settingsFile, settingsText, profileFile, engine, engineWith, read: (f) => readFileSync(f, "utf8") };
@@ -88,7 +88,7 @@ test("install adds Revive's hooks after the person's own, and backs the file up 
 test("install wires nothing for the agents Revive doesn't support on Windows", { skip: WINDOWS_ONLY }, () => {
   const w = home();
   w.engine("install");
-  for (const f of [join(".codex", "hooks.json"), join(".factory", "settings.json"), join(".factory", "hooks.json"), join(".cursor", "hooks.json"), join(".pi", "agent", "extensions"), join(".omp", "agent", "extensions")]) {
+  for (const f of [join(".factory", "settings.json"), join(".factory", "hooks.json"), join(".cursor", "hooks.json"), join(".pi", "agent", "extensions"), join(".omp", "agent", "extensions")]) {
     assert.equal(existsSync(join(w.h, f)), false, f);
   }
 });
@@ -133,7 +133,9 @@ test("doctor reports Claude Code, the pwsh block and herdr-core's settings", { s
   assert.equal(d.platform, "win32");
   assert.equal(d.restoreScreen, false);
   assert.equal(d.coreShell, null);
-  for (const k of ["codex", "droid", "cursor", "pi", "omp"]) assert.equal(d[k], null, k);
+  assert.equal(d.codex, true);
+  assert.equal(d.codexDaemon, "off");
+  for (const k of ["droid", "cursor", "pi", "omp"]) assert.equal(d[k], null, k);
   assert.equal(JSON.parse(home({ config: "restore_screen = true\n" }).engine("doctor").stdout).restoreScreen, true);
   const nu = home({ config: 'shell = ["nu"]\n' });
   assert.equal(JSON.parse(nu.engine("doctor").stdout).coreShell, "nu");
@@ -189,4 +191,80 @@ test("hasCli finds a .cmd in a folder on a semicolon-separated PATH", { skip: WI
     assert.equal(hasCli("fakecli"), true);
     assert.equal(hasCli("nothere"), false);
   } finally { process.env.PATH = saved; }
+});
+
+// ── Codex ───────────────────────────────────────────────────────────────────
+
+const NOTICE = "Codex: turned off its shared background server (daemon_auto_start = false in ~/.codex/config.toml) so Revive can see which pane a session runs in. Uninstall turns it back.";
+const LINE = "daemon_auto_start = false # added by Revive (herdr-revive-win)";
+
+test("install sets up Codex: its hooks, and the line that turns its background server off", { skip: WINDOWS_ONLY }, () => {
+  const w = home();
+  const config = join(w.h, ".codex", "config.toml");
+  writeFileSync(config, '[tui]\r\nscreen_reader_detection_done = true\r\n');
+  const r = w.engine("install");
+  assert.equal(r.status, 0, r.stderr);
+  const hooks = JSON.parse(w.read(join(w.h, ".codex", "hooks.json"))).hooks;
+  const command = winHookCommand(ENGINE);
+  assert.deepEqual(hooks.SessionStart, [{ matcher: "", hooks: [{ type: "command", command, timeout: 10 }] }]);
+  assert.deepEqual(hooks.SessionEnd, [{ matcher: "", hooks: [{ type: "command", command, timeout: 3 }] }]);
+  assert.equal(w.read(config), `[tui]\r\nscreen_reader_detection_done = true\r\n\r\n[features]\r\n${LINE}\r\n`);
+  assert.equal(w.read(`${config}.revive-backup`), '[tui]\r\nscreen_reader_detection_done = true\r\n');
+  assert.ok(r.stdout.includes(NOTICE), r.stdout);
+  const again = w.engine("install");
+  assert.ok(!again.stdout.includes(".codex"), again.stdout);
+  assert.ok(!again.stdout.includes(NOTICE));
+});
+
+test("install --no-codex leaves Codex alone", { skip: WINDOWS_ONLY }, () => {
+  const w = home();
+  w.engine("install", "--no-codex");
+  assert.equal(existsSync(join(w.h, ".codex", "hooks.json")), false);
+  assert.equal(existsSync(join(w.h, ".codex", "config.toml")), false);
+});
+
+test("the person's own daemon_auto_start = true is left, with a warning", { skip: WINDOWS_ONLY }, () => {
+  const w = home();
+  const config = join(w.h, ".codex", "config.toml");
+  writeFileSync(config, "[features]\ndaemon_auto_start = true\n");
+  const r = w.engine("install");
+  assert.equal(w.read(config), "[features]\ndaemon_auto_start = true\n");
+  assert.ok(r.stderr.includes(`Codex's daemon_auto_start is true in ${config}: Codex sessions won't be remembered.`), r.stderr);
+  assert.equal(JSON.parse(w.engine("doctor").stdout).codexDaemon, "on");
+});
+
+test("CODEX_HOME is where Codex's files are", { skip: WINDOWS_ONLY }, () => {
+  const w = home();
+  const other = join(w.root, "codex-home");
+  mkdirSync(other);
+  w.engineWith({ CODEX_HOME: other }, "install");
+  assert.ok(existsSync(join(other, "hooks.json")));
+  assert.ok(w.read(join(other, "config.toml")).includes(LINE));
+  assert.equal(existsSync(join(w.h, ".codex", "hooks.json")), false);
+  assert.equal(existsSync(join(w.h, ".codex", "config.toml")), false);
+});
+
+test("uninstall takes Revive's line and hooks out of Codex again", { skip: WINDOWS_ONLY }, () => {
+  const w = home();
+  const config = join(w.h, ".codex", "config.toml");
+  writeFileSync(config, 'model = "o3"\n');
+  w.engine("install");
+  w.engine("uninstall");
+  assert.equal(w.read(config), 'model = "o3"\n');
+  assert.equal(JSON.parse(w.read(join(w.h, ".codex", "hooks.json"))).hooks, undefined);
+  // Also when Revive's hooks file is gone already.
+  w.engine("install");
+  rmSync(join(w.h, ".codex", "hooks.json"));
+  w.engine("uninstall");
+  assert.equal(w.read(config), 'model = "o3"\n');
+});
+
+test("no Codex folder: nothing for Codex, and doctor says null", { skip: WINDOWS_ONLY }, () => {
+  const w = home();
+  rmSync(join(w.h, ".codex"), { recursive: true });
+  w.engine("install");
+  assert.equal(existsSync(join(w.h, ".codex")), false);
+  const d = JSON.parse(w.engine("doctor").stdout);
+  assert.equal(d.codex, null);
+  assert.equal(d.codexDaemon, null);
 });

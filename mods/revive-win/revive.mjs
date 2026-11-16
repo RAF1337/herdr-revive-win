@@ -38,6 +38,7 @@ import {
 import { agentDirs, claudeStartFolder, findSession } from "./lib/sessions.js";
 import { winProcesses, effectiveForeground, folderOwners, toSince } from "./lib/win.js";
 import { psResumeScript, psResumeLine, psNote, psNeedsCommand, psProfileBlock } from "./lib/pwsh.js";
+import { withDaemonOff, daemonSetting } from "./lib/codexconfig.js";
 
 const run = promisify(execFile);
 export const ENGINE = fileURLToPath(import.meta.url);
@@ -678,6 +679,10 @@ const hookCommand = (agent = null, portable = false) => {
 const claudeSettings = () => join(claudeDir(), "settings.json");
 const codexDir = () => process.env.CODEX_HOME || join(homedir(), ".codex");
 const codexHooks = () => join(codexDir(), "hooks.json");
+const codexConfig = () => join(codexDir(), "config.toml");
+/** The agents Revive supports on Windows. */
+const WIN_AGENTS = ["claude", "codex"];
+export const CODEX_NOTICE = "Codex: turned off its shared background server (daemon_auto_start = false in ~/.codex/config.toml) so Revive can see which pane a session runs in. Uninstall turns it back.";
 const piDir = () => process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent");
 // omp reads PI_CODING_AGENT_DIR too, but a pi setup sets it for pi: omp's own folder is assumed.
 const ompDir = () => join(homedir(), ".omp", "agent");
@@ -1029,8 +1034,8 @@ async function install(args, remove = false) {
   const changed = [];
   const notes = [];
   for (const [key, h] of Object.entries(HOOK_TARGETS)) {
-    // Windows: Claude Code only (the other agents aren't supported there).
-    if (WIN && key !== "claude") continue;
+    // Windows: Claude Code and Codex only (the other agents aren't supported there).
+    if (WIN && !WIN_AGENTS.includes(key)) continue;
     // Uninstall still cleans an agent whose CLI is gone, as long as its folder is there.
     if ((h.flag && args.includes(h.flag)) || !(remove ? existsSync(h.dir()) : h.present())) continue;
     const target = targetOf(h);
@@ -1053,6 +1058,19 @@ async function install(args, remove = false) {
   }
   // A file of someone else's at pi's or omp's path: say so, and still install the rest.
   const warnings = [];
+  // Windows: Codex runs its hooks from its shared background server unless
+  // daemon_auto_start is off, and from there they can't tell which terminal a
+  // session is in. A setting the person wrote is theirs: only warned about.
+  if (WIN && !args.includes("--no-codex") && existsSync(codexDir())) {
+    const file = codexConfig();
+    const text = readText(file);
+    const next = withDaemonOff(text, { remove });
+    if (next !== text && save(file, next)) {
+      changed.push(file);
+      if (!remove) notes.push(CODEX_NOTICE);
+    }
+    if (!remove && daemonSetting(next) === "on") warnings.push(`Codex's daemon_auto_start is true in ${file}: Codex sessions won't be remembered.`);
+  }
   for (const key of EXTENSION_AGENTS) {
     if (WIN || args.includes(EXTENSIONS[key].flag) || !existsSync(EXTENSIONS[key].dir())) continue;
     try {
@@ -1162,7 +1180,7 @@ export function doctorReport() {
   const safe = (fn) => { try { return fn(); } catch { return false; } };
   // Per agent: true or false, or null for an agent that isn't installed.
   const hooks = Object.fromEntries(Object.entries(HOOK_TARGETS).map(([key, h]) => {
-    if ((WIN && key !== "claude") || !h.present()) return [key, null];
+    if ((WIN && !WIN_AGENTS.includes(key)) || !h.present()) return [key, null];
     const file = targetOf(h);
     return [key, safe(() => h.has(readJson(file), file))];
   }));
@@ -1172,6 +1190,7 @@ export function doctorReport() {
       engine: ENGINE,
       ...hooks,
       ...Object.fromEntries(EXTENSION_AGENTS.map((key) => [key, null])),
+      codexDaemon: existsSync(codexDir()) ? safe(() => daemonSetting(readText(codexConfig()))) : null,
       shell: { pwsh: safe(() => readText(profilePath()).includes(BEGIN)) },
       pwshInstalled: pwshInstalled(),
       hc: hcAnswers(["--version"]),
