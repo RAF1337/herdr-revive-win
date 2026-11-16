@@ -27,3 +27,11 @@ test("a Windows transcript path names Claude Code, and the payload keeps its sou
   assert.equal(p.source, "resume");
   assert.equal(hookPayload({}).source, null);
 });
+
+test("npm's vendored codex.exe is Codex, with its flags", () => {
+  const exe = String.raw`C:\Users\me\AppData\Roaming\npm\node_modules\@openai\codex\node_modules\@openai\codex-win32-x64\vendor\x86_64-pc-windows-msvc\bin\codex.exe`;
+  assert.equal(agentKey(null, [exe, "--yolo", "-m", "gpt-5"]), "codex");
+  assert.deepEqual(carriedFlags("codex", [exe, "--yolo", "-m", "gpt-5"]), ["--yolo", "-m", "gpt-5"]);
+  assert.equal(isOneShot("codex", [exe, "exec", "hi"]), true);
+  assert.equal(isOneShot("codex", [exe, "--yolo"]), false);
+});

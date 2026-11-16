@@ -87,3 +87,21 @@ test("Claude Code started by npm's node fallback wrapper is in front", () => {
   ]);
   assert.equal(effectiveForeground(t, table).pid, 120);
 });
+
+// Codex installed with npm: npm's codex.ps1 starts `node …\codex\bin\codex.js`,
+// which starts the vendored codex.exe; that one may start Codex's shared
+// background server and its sandbox helper, which are never the session.
+const CODEX_JS = String.raw`C:\Users\me\AppData\Roaming\npm/node_modules/@openai/codex/bin/codex.js`;
+const CODEX_EXE = String.raw`C:\Users\me\AppData\Roaming\npm\node_modules\@openai\codex\node_modules\@openai\codex-win32-x64\vendor\x86_64-pc-windows-msvc\bin\codex.exe`;
+const CODEX_DAEMON = String.raw`\?\C:\Users\me\.codex\packages\app-server-daemon\releases\0.169.0-x86_64-pc-windows-msvc\bin\codex.exe`;
+test("Codex started through npm is in front, not its background server", () => {
+  const t = { pid: 10, cwd: String.raw`C:\w`, foreground: { pid: 10, argv: ["pwsh.exe"], cwd: String.raw`C:\w` } };
+  const table = new Map([
+    [10, proc(5, "pwsh.exe -NoExit")],
+    [11, proc(10, `"C:\Program Files\nodejs\node.exe" ${CODEX_JS} --yolo`)],
+    [12, proc(11, `${CODEX_EXE} --yolo`)],
+    [13, proc(12, `"${CODEX_DAEMON}" app-server --listen unix:// --managed-daemon`, "2026-11-16T08:00:05.000Z")],
+    [14, proc(12, String.raw`"C:\Users\me\.codex\packages\app-server-daemon\releases\0.169.0-x86_64-pc-windows-msvc\codex-resources\codex-windows-sandbox-setup.exe" eyJ2ZXJzaW9uIjo1fQ==`, "2026-11-16T08:00:06.000Z")],
+  ]);
+  assert.deepEqual(effectiveForeground(t, table), { pid: 12, argv: [CODEX_EXE, "--yolo"], cwd: String.raw`C:\w` });
+});
