@@ -115,7 +115,8 @@ test("resume and fork commands per agent", () => {
   assert.deepEqual(command({ agent: "claude", session: ID, flags: ["--model", "opus"] }, "resume"), ["claude", "--model", "opus", "--resume", ID]);
   assert.deepEqual(command({ agent: "claude", session: ID, flags: [] }, "fork"), ["claude", "--resume", ID, "--fork-session"]);
   assert.deepEqual(command({ agent: "codex", session: ID, flags: ["--no-daemon"] }, "resume"), ["codex", "resume", "--no-daemon", ID]);
-  assert.deepEqual(command({ agent: "codex", session: ID, flags: [] }, "fork"), ["codex", "fork", ID]);
+  // On Windows Revive's own Codex commands always carry --no-daemon (see win-core.test.js).
+  assert.deepEqual(command({ agent: "codex", session: ID, flags: [] }, "fork"), process.platform === "win32" ? ["codex", "fork", "--no-daemon", ID] : ["codex", "fork", ID]);
   assert.deepEqual(command({ agent: "pi", session: ID, flags: ["--model", "sonnet"] }, "resume"), ["pi", "--model", "sonnet", "--session", ID]);
   assert.deepEqual(command({ agent: "pi", session: ID, flags: [] }, "fork"), ["pi", "--fork", ID]);
   // A config folder is never set from a record: the resuming shell's own counts.
