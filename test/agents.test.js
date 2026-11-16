@@ -114,7 +114,8 @@ test("how each agent's SessionEnd reasons are taken", () => {
   for (const key of ["claude", "codex", "droid"]) {
     assert.equal(endAction(key, "prompt_input_exit"), "forget", key);
     assert.equal(endAction(key, "logout"), "forget", key);
-    assert.equal(endAction(key, "other"), "keep", key);
+    // Codex on Windows sends "other" only from /exit (see win-core.test.js).
+    assert.equal(endAction(key, "other"), key === "codex" && process.platform === "win32" ? "forget" : "keep", key);
     assert.equal(endAction(key, "clear"), "ignore", key);
     assert.equal(endAction(key, "resume"), "ignore", key);
   }
