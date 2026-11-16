@@ -1,0 +1,23 @@
+{
+  "name": "herdr-revive-win",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Windows build of herdr-revive: bring back the Claude Code session a Herdr desktop-app terminal lost to a restart or reboot.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RAF1337/herdr-revive-win.git"
+  },
+  "bugs": {
+    "url": "https://github.com/RAF1337/herdr-revive-win/issues"
+  },
+  "homepage": "https://github.com/RAF1337/herdr-revive-win#readme",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node test/run.mjs",
+    "e2e:win": "node test/e2e/windows-e2e.mjs"
+  }
+}
