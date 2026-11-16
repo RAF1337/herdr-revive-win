@@ -1,12 +1,12 @@
 # Revive for Windows
 
-Revive for Windows brings back the Claude Code session a Herdr desktop-app terminal lost to a reboot, a logout or a herdr-core crash: in the same pane, in the same folder, with the same conversation and safe launch flags. Its dialog (`ctrl-shift-r`) lists remembered sessions, resumes one by hand, and forks the focused session into a new pane beside it. It is an unofficial, temporary Windows build of [dmazlum/herdr-revive](https://github.com/dmazlum/herdr-revive) (macOS and Linux), and supports Claude Code in PowerShell 7 terminals only.
+Revive for Windows brings back the Claude Code or Codex session a Herdr desktop-app terminal lost to a reboot, a logout or a herdr-core crash: in the same pane, in the same folder, with the same conversation and safe launch flags. Its dialog (`ctrl-shift-r`) lists remembered sessions, resumes one by hand, and forks the focused session into a new pane beside it. It is an unofficial, temporary Windows build of [dmazlum/herdr-revive](https://github.com/dmazlum/herdr-revive) (macOS and Linux), and supports Claude Code and Codex in PowerShell 7 terminals only.
 
 ![Revive for Windows](preview.png)
 
 ## Installing it (for the agent doing it)
 
-This is the Windows build. It supports Claude Code in the Herdr desktop app's terminals, which run PowerShell 7 (herdr-core's default shell on Windows). See *Windows* at the end for how it differs.
+This is the Windows build. It supports Claude Code and Codex in the Herdr desktop app's terminals, which run PowerShell 7 (herdr-core's default shell on Windows). See *Windows* at the end for how it differs.
 
 1. Read every file in this repository before copying anything.
 2. Copy `mods\revive-win` to `%USERPROFILE%\.config\herdr-app\mods\revive-win`, as a copy, not a link.
@@ -17,10 +17,14 @@ This is the Windows build. It supports Claude Code in the Herdr desktop app's te
    `SessionStart` and a `SessionEnd` hook group to `%USERPROFILE%\.claude\settings.json`
    (only if `%USERPROFILE%\.claude` exists), after the person's own groups. It adds a block to
    PowerShell 7's profile (`$PROFILE.CurrentUserCurrentHost`, asked from `pwsh`), creating the
-   file if it is missing. It keeps the original of each file as `.revive-backup`. It wires no
-   other agent on Windows. `uninstall` takes both out again, and removes a profile it created.
+   file if it is missing. If `%USERPROFILE%.codex` exists, it adds the same hooks to
+   `.codexhooks.json` and turns Codex's shared background server off with
+   `daemon_auto_start = false` under `[features]` in `.codexconfig.toml` (a setting the
+   person wrote stays); Codex asks to trust the new hooks at its next start. It keeps the
+   original of each file as `.revive-backup`. It wires no other agent on Windows.
+   `uninstall` takes all of it out again, and removes a profile it created.
 6. Run `node %USERPROFILE%\.config\herdr-app\mods\revive-win\revive.mjs doctor` and report what it shows
-   (`claude`, `shell.pwsh`, `pwshInstalled`, `hc`, `core`, `coreShell`, `restoreScreen`, `unremembered`).
+   (`claude`, `codex`, `codexDaemon`, `shell.pwsh`, `pwshInstalled`, `hc`, `core`, `coreShell`, `restoreScreen`, `unremembered`).
 7. New sessions are remembered from now on. Sessions already running are not: `install` and
    `doctor` (`unremembered`) say how many `adopt` could remember. If there are any, run
    `revive.mjs adopt --dry-run`, show the person what it lists, and run `adopt` if they want.
@@ -31,7 +35,7 @@ The dialog checks this repository's releases once a day and offers the prompt th
 
 1. Replace the installed folder (normally `%USERPROFILE%\.config\herdr-app\mods\revive-win`) with the release's `mods\revive-win`, in place, keeping the folder's name.
 2. Run `herdr-app check` on the folder. It must pass.
-3. Run `revive.mjs doctor`. The hooks and the profile block point at the same folder, so they keep working. If `doctor` shows something missing, tell the person what `install` would change and ask before running it.
+3. Run `revive.mjs doctor`. The hooks and the profile block point at the same folder, so they keep working. If `doctor` shows something missing (from 0.2.0 on: Codex's hooks and `codexDaemon`), tell the person what `install` would change and ask before running it.
 
 ## What you see
 
@@ -250,7 +254,7 @@ names, as needs, and a `--session-dir` in their `revive.flags` counts as a need 
   another session right away and its `SessionStart` records it; clearing could race it.
 - `SessionEnd` with reason `other` (a signal) leaves the record. Any other reason
   (`prompt_input_exit` for `/exit` and Ctrl+C, `logout`, …) forgets it. Codex and Droid
-  follow these. Cursor: `completed` and `user_close` forget it, any other reason keeps it.
+  follow these, except Codex on Windows, where `other` forgets it (see Watch out). Cursor: `completed` and `user_close` forget it, any other reason keeps it.
 - Hook payloads are read the same for every agent: the event with its first letter
   capitalized (Cursor's `sessionStart`), the id from `session_id` or else
   `conversation_id`, the folder from `cwd` or else `workspace_roots[0]`.
@@ -382,6 +386,7 @@ warns at every start about anything longer.
 | `mods/revive-win/revive.mjs` | The engine, run with the person's Node: hooks, the shell check, list, resume, adopt, install |
 | `mods/revive-win/lib/win.js` | Engine only, Windows: the process table from CIM, start times, the effective foreground, folder owners |
 | `mods/revive-win/lib/pwsh.js` | Windows: PowerShell quoting, the resume command and script, the notes, the profile block (plain functions, like `lib/core.js`) |
+| `mods/revive-win/lib/codexconfig.js` | Engine only, Windows: Revive's `daemon_auto_start = false` line in Codex's `config.toml`, added and taken out |
 | `mods/revive-win/lib/extension.js` | Extensions only: what pi's and omp's extensions share (running `revive.mjs hook` one at a time, the SIGTERM/SIGHUP listener) |
 | `mods/revive-win/pi/revive.ts` | pi's extension: runs `revive.mjs hook` at pi's session start and end, with Claude Code's payload |
 | `mods/revive-win/omp/revive.ts` | omp's extension: the same for omp, which has its own extension folder and events |
@@ -481,14 +486,17 @@ This build adds Windows to upstream's macOS and Linux design. The Windows code i
   When they hold, it asks `hc get` once (about 0.2 s). Only if the terminal has a `revive.session` label and its pid is this shell's `$PID` does it run `revive.mjs check --shell $PID --since <its start time>`. What `check` prints is PowerShell. The block defines it as the function `__revive` and types `__revive` into its own terminal with `hc send`, with `HC_TERMINAL_ID` removed for that call, so PSReadLine runs it at the first prompt like a typed command. A native program started from the profile's prompt function would get no console of its own (its output is captured); typed at the prompt, it does. The block always exports `REVIVE_SHELL` and leaves `$LASTEXITCODE` at 0.
 - **Resume commands** are PowerShell. Every word is in single quotes (`'` and its curly forms doubled), and the folder is entered with `Set-Location -LiteralPath '…' -ErrorAction Stop`, so the agent never starts elsewhere. An automatic resume sets `REVIVE_RESUME` for its one run, as upstream does. The notes use ANSI colours through `[Console]::Out.WriteLine`. Every `pwsh` Revive starts prints UTF-8, so `æøå` and `↻` survive.
 - **herdr-core's settings.** `restore_screen = true` in `%APPDATA%\herdr-core\config.toml` shows the lost program's last screen above the new shell. `install` suggests it but never writes it. `doctor` reports `coreShell` and `restoreScreen`, and `install` warns when herdr-core's `shell` isn't pwsh.
-- **Not on Windows:** Codex, pi, omp, Droid and Cursor. Their code is here, but `install` and `doctor` skip them. Shells other than PowerShell 7 are not supported either.
+- **Codex.** Codex runs its hooks from its shared background server (`[features] daemon_auto_start`, on by default) unless that is off, and from there they lack `HC_TERMINAL_ID`: Revive can't tell which terminal the session is in, and `SessionEnd` comes late or never. So `install` adds `daemon_auto_start = false # added by Revive (herdr-revive-win)` under `[features]` in `~/.codex/config.toml` (or `$CODEX_HOME`), creating the table if needed and keeping the rest of the file byte for byte (`lib/codexconfig.js`, a line edit, no TOML parser), and says so on stdout and in the dialog. A setting the person wrote (`daemon_auto_start` under `[features]`, a dotted `features.daemon_auto_start`, an inline `features = { … }`) is never changed; a `true` gets a warning, `doctor`'s `codexDaemon: "on"` and a footer line. `uninstall` and `--no-codex` take out only Revive's line. In a Herdr pane npm's Codex runs as `pwsh → node …\@openai\codex\bin\codex.js → codex.exe` (the vendored one); the background server's `codex.exe app-server` and `codex-windows-sandbox-setup.exe` are never the session. With the server off, Codex sends `SessionStart` at a session's first message and `SessionEnd` only when the person ends it (`/exit` says `other`); a closed pane or a killed Codex sends none. So on Windows Codex's `other` forgets the record.
+- **Ends are quick.** Codex gives `SessionEnd` 3 seconds, and the process table takes most of that. On Windows a `SessionEnd` is matched by its session id alone (a run an agent starts as a tool has a session of its own), without the process table.
+- **Not on Windows:** pi, omp, Droid and Cursor. Their code is here, but `install` and `doctor` skip them. Codex has no `adopt`. Shells other than PowerShell 7 are not supported either.
 - **Tests.** `npm test` runs `test/run.mjs`. On Windows it gives the suite a scratch `USERPROFILE`, `HOME`, `APPDATA` and PowerShell profile, an unreachable herdr-core, and no `HC_TERMINAL_*`. Without that, Node's `homedir()` follows `USERPROFILE` and ignores `HOME`, and tests would touch the person's real files. Upstream's tests that need `sh`, `ps`, shebang scripts, symlinks or Unix sockets are skipped on Windows (`test/helpers/platform.js`). `npm run e2e:win` (`test/e2e/windows-e2e.mjs`) runs the whole cycle against an isolated herdr-core.
 
 ## Done when
 
 - `herdr-app check %USERPROFILE%\.config\herdr-app\mods\revive-win` passes, and `herdr-app status` lists no errors.
-- `node …\revive.mjs doctor` shows `claude: true`, `shell.pwsh: true`, `pwshInstalled: true`, `hc: true` and `core: true`.
-- `ctrl-shift-r` opens the dialog; its footer reads `Ready: Claude Code, pwsh`.
+- `node …\revive.mjs doctor` shows `claude: true`, `shell.pwsh: true`, `pwshInstalled: true`, `hc: true` and `core: true`; with Codex, `codex: true` and `codexDaemon: "off"`.
+- `ctrl-shift-r` opens the dialog; its footer reads `Ready: Claude Code, pwsh` (`Ready: Claude Code, Codex, pwsh` with Codex).
+- A Codex session gets its labels at its first message and, after a loss, its terminal prints `↻ Revive  resuming Codex session <id>`.
 - A Claude Code session started in a Herdr terminal gets `revive.session`, `revive.cwd` and `revive.flags` labels (`hc get <terminal> --json`).
 - After `hc server stop` and `hc server start` (or a reboot and opening Herdr), that terminal prints `↻ Revive  resuming Claude Code session <id>` and shows the conversation.
 - A session ended with `/exit` does not come back.
