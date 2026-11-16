@@ -6,17 +6,54 @@
 //
 // A careful line edit, not a TOML parser: everything else in the file stays
 // as it is, byte for byte, comments and line endings included. A setting the
-// person wrote themselves, in any of TOML's forms, is never changed.
+// person wrote themselves, in any of TOML's forms, is never changed. Text
+// inside multi-line strings and arrays is never read as a table or a key.
 
 export const REVIVE_LINE = "daemon_auto_start = false # added by Revive (herdr-revive-win)";
+/** The same, for a file that sets its features with top-level dotted keys (`features.x = …`). */
+export const REVIVE_DOTTED_LINE = `features.${REVIVE_LINE}`;
 
-const HEADER = /^\s*\[\s*([^\]]*?)\s*\]\s*(#.*)?$/;
-const FEATURE_KEY = /^\s*daemon_auto_start\s*=\s*(true|false)?/;
-const DOTTED_KEY = /^\s*features\s*\.\s*daemon_auto_start\s*=\s*(true|false)?/;
-const INLINE_TABLE = /^\s*features\s*=\s*\{.*\bdaemon_auto_start\s*=\s*(true|false)?/;
+const F = String.raw`(?:"features"|'features'|features)`;
+const D = String.raw`(?:"daemon_auto_start"|'daemon_auto_start'|daemon_auto_start)`;
+const HEADER = /^\s*\[\s*(?:"([^"]*)"|'([^']*)'|([^\][#"']*?))\s*\]\s*(#.*)?$/;
+const FEATURE_KEY = new RegExp(String.raw`^\s*${D}\s*=\s*(true|false)?`);
+const DOTTED_KEY = new RegExp(String.raw`^\s*${F}\s*\.\s*${D}\s*=\s*(true|false)?`);
+const DOTTED_ANY = new RegExp(String.raw`^\s*${F}\s*\.`);
+const INLINE_KEY = new RegExp(String.raw`^\s*${F}\s*=\s*\{.*?[{,\s]${D}\s*=\s*(true|false)?`);
+const INLINE_ANY = new RegExp(String.raw`^\s*${F}\s*=\s*\{`);
 
 const strip = (line) => line.replace(/\r?\n$/, "");
-const isRevive = (line) => strip(line).trim() === REVIVE_LINE;
+const isRevive = (line) => [REVIVE_LINE, REVIVE_DOTTED_LINE].includes(strip(line).trim());
+
+/**
+ * Where a line leaves the parser: inside a multi-line string (its delimiter)
+ * or not, and how many array brackets are open. Strings on one line and
+ * comments are skipped; a header line's own brackets don't count.
+ */
+function scan(line, from, depth, header) {
+  for (let i = from; i < line.length;) {
+    const c = line[i];
+    const ml = line.startsWith('"""', i) ? '"""' : line.startsWith("'''", i) ? "'''" : null;
+    if (ml) {
+      const close = line.indexOf(ml, i + 3);
+      if (close < 0) return { ml, depth };
+      i = close + 3;
+      continue;
+    }
+    if (c === '"') {
+      let j = i + 1;
+      while (j < line.length && line[j] !== '"') j += line[j] === "\\" ? 2 : 1;
+      i = j + 1;
+      continue;
+    }
+    if (c === "'") { const j = line.indexOf("'", i + 1); i = j < 0 ? line.length : j + 1; continue; }
+    if (c === "#") break;
+    if (!header && c === "[") depth++;
+    if (!header && c === "]") depth = Math.max(0, depth - 1);
+    i++;
+  }
+  return { ml: null, depth };
+}
 
 /** The file split into lines that keep their own line ending, and what's around them. */
 function parse(text) {
@@ -28,25 +65,43 @@ function parse(text) {
   let features = -1;
   let revive = -1;
   let own = null;
+  let dotted = -1;
+  let inline = false;
+  let ml = null;
+  let depth = 0;
   lines.forEach((line, i) => {
     const s = strip(line);
-    const header = HEADER.exec(s);
-    if (header && !s.trim().startsWith("[[")) {
-      table = header[1];
-      if (table === "features" && features < 0) features = i;
-      return;
+    let from = 0;
+    if (ml) {
+      const close = s.indexOf(ml);
+      if (close < 0) return;
+      ml = null;
+      from = close + 3;
+    } else if (depth === 0) {
+      const array = s.trim().startsWith("[[");
+      const header = array ? null : HEADER.exec(s);
+      if (array || header) {
+        table = array ? "[[array]]" : header[1] ?? header[2] ?? header[3];
+        if (table === "features" && features < 0) features = i;
+        return;
+      }
+      if (table === null) {
+        const m = DOTTED_KEY.exec(s) ?? INLINE_KEY.exec(s);
+        if (isRevive(line)) revive = i;
+        else if (m) own = m[1] ?? "true";
+        if (DOTTED_ANY.test(s)) dotted = i;
+        if (INLINE_ANY.test(s)) inline = true;
+      } else if (table === "features") {
+        if (isRevive(line)) revive = i;
+        else {
+          const m = FEATURE_KEY.exec(s);
+          if (m) own = m[1] ?? "true";
+        }
+      }
     }
-    if (s.trim().startsWith("[[")) { table = "[[array]]"; return; }
-    if (table === null) {
-      const m = DOTTED_KEY.exec(s) ?? INLINE_TABLE.exec(s);
-      if (m) own = m[1] ?? "true";
-    } else if (table === "features") {
-      if (isRevive(line)) { revive = i; return; }
-      const m = FEATURE_KEY.exec(s);
-      if (m) own = m[1] ?? "true";
-    }
+    ({ ml, depth } = scan(s, from, depth, false));
   });
-  return { bom, lines, eol, features, revive, own };
+  return { bom, lines, eol, features, revive, own, dotted, inline };
 }
 
 /** `"off"` when Revive's line or the person's own `false` is there, else `"on"`. */
@@ -58,11 +113,13 @@ export function daemonSetting(text) {
 /**
  * The file with Revive's line added (once, and only when the person has no
  * setting of their own), or with `remove` taken out again, together with a
- * `[features]` table Revive had to create for it.
+ * `[features]` table Revive had to create for it. A file whose features are
+ * an inline table (`features = { … }`) is left as it is: Revive can't add a
+ * key there without rewriting the person's line.
  */
 export function withDaemonOff(text, { remove = false } = {}) {
   const src = String(text ?? "");
-  const { bom, lines, eol, features, revive, own } = parse(src);
+  const { bom, lines, eol, features, revive, own, dotted, inline } = parse(src);
   if (remove) {
     if (revive < 0) return src;
     const out = [...lines];
@@ -77,11 +134,13 @@ export function withDaemonOff(text, { remove = false } = {}) {
     }
     return bom + out.join("");
   }
-  if (own !== null || revive >= 0) return src;
-  if (features >= 0) {
+  if (own !== null || revive >= 0 || inline) return src;
+  // A second way of writing the same table is invalid TOML: Codex wouldn't start.
+  const at = features >= 0 ? features : dotted;
+  if (at >= 0) {
     const out = [...lines];
-    if (!out[features].endsWith("\n")) out[features] += eol;
-    out.splice(features + 1, 0, REVIVE_LINE + eol);
+    if (!out[at].endsWith("\n")) out[at] += eol;
+    out.splice(at + 1, 0, (features >= 0 ? REVIVE_LINE : REVIVE_DOTTED_LINE) + eol);
     return bom + out.join("");
   }
   let body = lines.join("");

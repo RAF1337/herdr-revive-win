@@ -195,7 +195,8 @@ test("hasCli finds a .cmd in a folder on a semicolon-separated PATH", { skip: WI
 
 // ── Codex ───────────────────────────────────────────────────────────────────
 
-const NOTICE = "Codex: turned off its shared background server (daemon_auto_start = false in ~/.codex/config.toml) so Revive can see which pane a session runs in. Uninstall turns it back.";
+const notice = (file) => `Codex: turned off its shared background server (daemon_auto_start = false in ${file}) so Revive can see which pane a session runs in. Uninstall turns it back.`;
+const NOTICE = notice(["~", ".codex", "config.toml"].join(process.platform === "win32" ? String.fromCharCode(92) : "/"));
 const LINE = "daemon_auto_start = false # added by Revive (herdr-revive-win)";
 
 test("install sets up Codex: its hooks, and the line that turns its background server off", { skip: WINDOWS_ONLY }, () => {
@@ -229,7 +230,7 @@ test("the person's own daemon_auto_start = true is left, with a warning", { skip
   writeFileSync(config, "[features]\ndaemon_auto_start = true\n");
   const r = w.engine("install");
   assert.equal(w.read(config), "[features]\ndaemon_auto_start = true\n");
-  assert.ok(r.stderr.includes(`Codex's daemon_auto_start is true in ${config}: Codex sessions won't be remembered.`), r.stderr);
+  assert.ok(r.stderr.includes(`Codex's background server stays on (daemon_auto_start in ${config}): Codex sessions won't be remembered.`), r.stderr);
   assert.equal(JSON.parse(w.engine("doctor").stdout).codexDaemon, "on");
 });
 
@@ -237,7 +238,8 @@ test("CODEX_HOME is where Codex's files are", { skip: WINDOWS_ONLY }, () => {
   const w = home();
   const other = join(w.root, "codex-home");
   mkdirSync(other);
-  w.engineWith({ CODEX_HOME: other }, "install");
+  const r = w.engineWith({ CODEX_HOME: other }, "install");
+  assert.ok(r.stdout.includes(notice(join(other, "config.toml"))), r.stdout);
   assert.ok(existsSync(join(other, "hooks.json")));
   assert.ok(w.read(join(other, "config.toml")).includes(LINE));
   assert.equal(existsSync(join(w.h, ".codex", "hooks.json")), false);
@@ -267,4 +269,13 @@ test("no Codex folder: nothing for Codex, and doctor says null", { skip: WINDOWS
   const d = JSON.parse(w.engine("doctor").stdout);
   assert.equal(d.codex, null);
   assert.equal(d.codexDaemon, null);
+});
+
+test("an inline features table is left alone, with a warning", { skip: WINDOWS_ONLY }, () => {
+  const w = home();
+  const config = join(w.h, ".codex", "config.toml");
+  writeFileSync(config, "features = { web_search = true }\n");
+  const r = w.engine("install");
+  assert.equal(w.read(config), "features = { web_search = true }\n");
+  assert.ok(r.stderr.includes("Codex's background server stays on"), r.stderr);
 });

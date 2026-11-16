@@ -68,3 +68,38 @@ test("removing never takes out the person's own line or table", () => {
   const emptyTheirs = "[features]\n\n[tui]\nx = 1\n";
   assert.equal(withDaemonOff(emptyTheirs, { remove: true }), emptyTheirs);
 });
+
+// Found by the final review: forms of [features] that a second table would break.
+const DOTTED_LINE = "features.daemon_auto_start = false # added by Revive (herdr-revive-win)";
+
+test("top-level dotted features keys get Revive's line as a dotted key, never a second table", () => {
+  const text = "model = \"o3\"\nfeatures.web_search = true\n\n[tui]\nx = 1\n";
+  const out = withDaemonOff(text);
+  assert.equal(out, `model = "o3"\nfeatures.web_search = true\n${DOTTED_LINE}\n\n[tui]\nx = 1\n`);
+  assert.equal(daemonSetting(out), "off");
+  assert.equal(withDaemonOff(out, { remove: true }), text);
+});
+
+test("an inline features table without the key is left alone, and counts as on", () => {
+  const text = "features = { web_search = true }\n";
+  assert.equal(withDaemonOff(text), text);
+  assert.equal(daemonSetting(text), "on");
+});
+
+test("quoted keys and table names are the same as bare ones", () => {
+  const own = '[features]\n"daemon_auto_start" = true\n';
+  assert.equal(withDaemonOff(own), own);
+  assert.equal(daemonSetting(own), "on");
+  assert.equal(withDaemonOff('["features"]\nfoo = 1\n'), `["features"]\n${REVIVE_LINE}\nfoo = 1\n`);
+});
+
+test("text inside multi-line strings and arrays is never read as a table or a key", () => {
+  const str = 'developer_instructions = """\nsee\n[features]\ndaemon_auto_start = false\n"""\n';
+  assert.equal(daemonSetting(str), "on");
+  assert.equal(withDaemonOff(str), `${str}\n[features]\n${REVIVE_LINE}\n`);
+  const lit = "notes = '''\n[features]\n'''\n";
+  assert.equal(withDaemonOff(lit), `${lit}\n[features]\n${REVIVE_LINE}\n`);
+  const arr = 'x = [\n  ["a"],\n  ["features"]\n]\n';
+  assert.equal(withDaemonOff(arr), `${arr}\n[features]\n${REVIVE_LINE}\n`);
+  for (const x of [str, lit, arr]) assert.equal(withDaemonOff(withDaemonOff(x), { remove: true }), x);
+});

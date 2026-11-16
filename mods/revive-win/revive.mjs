@@ -690,7 +690,8 @@ const codexHooks = () => join(codexDir(), "hooks.json");
 const codexConfig = () => join(codexDir(), "config.toml");
 /** The agents Revive supports on Windows. */
 const WIN_AGENTS = ["claude", "codex"];
-export const CODEX_NOTICE = "Codex: turned off its shared background server (daemon_auto_start = false in ~/.codex/config.toml) so Revive can see which pane a session runs in. Uninstall turns it back.";
+/** What install says when it turns Codex's background server off, naming the file it changed. */
+export const codexNotice = (file) => `Codex: turned off its shared background server (daemon_auto_start = false in ${file}) so Revive can see which pane a session runs in. Uninstall turns it back.`;
 const piDir = () => process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent");
 // omp reads PI_CODING_AGENT_DIR too, but a pi setup sets it for pi: omp's own folder is assumed.
 const ompDir = () => join(homedir(), ".omp", "agent");
@@ -1075,9 +1076,9 @@ async function install(args, remove = false) {
     const next = withDaemonOff(text, { remove });
     if (next !== text && save(file, next)) {
       changed.push(file);
-      if (!remove) notes.push(CODEX_NOTICE);
+      if (!remove) notes.push(codexNotice(tilde(file)));
     }
-    if (!remove && daemonSetting(next) === "on") warnings.push(`Codex's daemon_auto_start is true in ${file}: Codex sessions won't be remembered.`);
+    if (!remove && daemonSetting(next) === "on") warnings.push(`Codex's background server stays on (daemon_auto_start in ${file}): Codex sessions won't be remembered.`);
   }
   for (const key of EXTENSION_AGENTS) {
     if (WIN || args.includes(EXTENSIONS[key].flag) || !existsSync(EXTENSIONS[key].dir())) continue;
