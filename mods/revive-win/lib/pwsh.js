@@ -92,11 +92,24 @@ export function psNeedsCommand(rec) {
  * A native program started from the profile's prompt function would get no
  * console of its own; typed at the prompt it does.
  */
+/** Codex subcommands that never start an interactive session: run as typed. */
+export const CODEX_PLAIN = ["exec", "e", "login", "logout", "mcp", "mcp-server", "app-server", "app", "completion", "sandbox", "debug", "apply", "a", "cloud", "features", "help", "remote-control"];
+
 export function psProfileBlock(engine) {
   return [
     PROFILE_BEGIN,
     "# Resume the Claude Code session a Herdr terminal lost to a restart or reboot.",
     "# REVIVE_DEBUG=1 says why it did or didn't.",
+    "# In a Herdr terminal Codex runs without its shared background server (--no-daemon):",
+    "# that server would run Codex's hooks outside the terminal, and Revive couldn't remember it.",
+    "if ($env:HC_TERMINAL_ID -and -not $env:HERDR_PANE_ID) {",
+    "  function global:codex {",
+    "    $real = Get-Command codex -CommandType ExternalScript, Application -ErrorAction Ignore | Select-Object -First 1",
+    "    if (-not $real) { Write-Error 'codex is not installed'; return }",
+    `    $quiet = @(${CODEX_PLAIN.map(psQuote).join(", ")})`,
+    "    if ($args -contains '--no-daemon' -or ($args.Count -and \"$($args[0])\" -in $quiet)) { & $real @args } else { & $real --no-daemon @args }",
+    "  }",
+    "}",
     "& {",
     "  if (-not $env:HC_TERMINAL_ID) { return }",
     "  $why = $null",

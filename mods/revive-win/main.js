@@ -474,7 +474,7 @@ export default class Revive extends View {
   unrecordedCard(t, entry) {
     const agent = AGENTS[entry.live];
     const why = entry.live === "codex"
-      ? "Revive has no record of this session, so it can't be forked or brought back. Codex records it at its first message, and not at all while its shared background server runs it (daemon_auto_start)."
+      ? "Revive has no record of this session, so it can't be forked or brought back. Codex records it at its first message, and not at all while its shared background server runs it. Start Codex as codex in a Herdr terminal (Revive adds --no-daemon there), or with codex --no-daemon."
       : "Revive has no record of this session, so it can't be forked or brought back. It is recorded when it starts once Revive is installed.";
     return v_flex().gap(12).p(16).rounded(12).bg(t.raised).border_1().border_color(t.border)
       .child(h_flex().gap(12).items_start()

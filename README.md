@@ -60,19 +60,25 @@ Run `node %USERPROFILE%\.config\herdr-app\mods\revive-win\revive.mjs uninstall`.
 
 ## Codex
 
-Install changes one thing in Codex itself. It adds this line under `[features]` in `%USERPROFILE%\.codex\config.toml` (or `%CODEX_HOME%\config.toml`):
+Codex hands its sessions to a shared background server unless told not to, and that server runs Codex's hooks outside your terminal. Revive then can't tell which pane a session belongs to, and never hears that it ended. So Revive keeps Codex off that server in two ways.
+
+**In Herdr terminals, `codex` runs with `--no-daemon`.** Revive's PowerShell block wraps the `codex` command there, so `codex`, `codex --yolo` or `codex "fix it"` start as `codex --no-daemon …`. Subcommands that don't start a session (`exec`, `login`, `mcp`, …) run as typed, and Revive's own `codex resume` and `codex fork` always carry `--no-daemon`. Outside Herdr, `codex` is untouched.
+
+**Install changes one thing in Codex itself.** It adds this line under `[features]` in `%USERPROFILE%\.codex\config.toml` (or `%CODEX_HOME%\config.toml`):
 
 ```toml
 daemon_auto_start = false # added by Revive (herdr-revive-win)
 ```
 
-**Why:** by default Codex hands sessions to a shared background server, and that server runs Codex's hooks outside your terminal. Revive then can't tell which pane a session belongs to, and never hears that it ended. With the line, each Codex runs its own session and its hooks come from its pane.
+It stops Codex from starting that background server by itself. It doesn't stop a Codex from joining one that is already running (started by the Codex desktop app, an editor, or a Codex from before you installed Revive); that is what `--no-daemon` in Herdr terminals is for.
 
-**What it costs:** each Codex you start, in Herdr or anywhere else, runs on its own instead of sharing one background server, as Claude Code always does.
+**What it costs:** each Codex you start runs on its own instead of sharing one background server, as Claude Code always does.
 
 **How you're told:** install prints it, the dialog shows it after **Install**, and `doctor` reports `codexDaemon` (`off`, `on`, or `null` without Codex).
 
 **How to undo it:** run `uninstall`, which removes only Revive's line. Or set `daemon_auto_start = true` under `[features]` yourself: Revive never changes a value you wrote, but Codex sessions are then not remembered, and the dialog says so. Deleting the line doesn't last, because the next update adds it back.
+
+If Herdr starts Codex for you without PowerShell (not by typing `codex` in a terminal) while a background server is running, that session isn't remembered; the dialog says so when you open it on that pane. Start it as `codex` in the terminal, or with `codex --no-daemon`.
 
 Also good to know: Codex records a session at its first message, so a Codex you open and leave empty isn't remembered. Codex asks you to trust Revive's hooks the next time it starts. `/exit` forgets a Codex session; closing its pane or a crash keeps it.
 

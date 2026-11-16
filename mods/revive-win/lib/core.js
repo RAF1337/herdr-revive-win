@@ -33,6 +33,12 @@ const claudeEnd = (reason) => (reason === "clear" || reason === "resume" ? "igno
  * (`/exit` says "other"); a closed pane or a killed Codex sends none. So there
  * "other" is the person's own end. Elsewhere Claude Code's reasons stand.
  */
+/**
+ * Codex on Windows joins a shared background server that is already running
+ * unless it runs with --no-daemon, and that server runs the hooks outside the
+ * terminal: Revive's own resume and fork always pass it there.
+ */
+const codexFlags = (flags) => (globalThis.process?.platform === "win32" && !flags.includes("--no-daemon") ? ["--no-daemon", ...flags] : flags);
 const codexEnd = (reason) => (globalThis.process?.platform === "win32"
   ? (reason === "clear" || reason === "resume" ? "ignore" : "forget")
   : claudeEnd(reason));
@@ -149,8 +155,8 @@ export const AGENTS = {
     name: "Codex",
     bin: "codex",
     apps: ["codex"],
-    resume: (id, flags) => ["codex", "resume", ...flags, id],
-    fork: (id, flags) => ["codex", "fork", ...flags, id],
+    resume: (id, flags) => ["codex", "resume", ...codexFlags(flags), id],
+    fork: (id, flags) => ["codex", "fork", ...codexFlags(flags), id],
     end: codexEnd,
     env: ["CODEX_HOME"],
     oneShot: codexOneShot,

@@ -2,7 +2,7 @@
 // functions: these run on every platform.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { agentKey, carriedFlags, isOneShot, isShell, hookPayload, endAction } from "../mods/revive-win/lib/core.js";
+import { agentKey, carriedFlags, isOneShot, isShell, hookPayload, endAction, command } from "../mods/revive-win/lib/core.js";
 
 const CLAUDE = "C:\\Users\\me\\.local\\bin\\claude.exe";
 
@@ -43,4 +43,13 @@ test("on Windows Codex's \"other\" means the person ended it", { skip: process.p
   assert.equal(endAction("codex", "clear"), "ignore");
   assert.equal(endAction("codex", "resume"), "ignore");
   assert.equal(endAction("claude", "other"), "keep");
+});
+
+// Codex joins a shared background server that is already running unless it
+// runs with --no-daemon, and that server runs the hooks outside the terminal.
+test("on Windows Revive's own codex resume and fork never use the background server", { skip: process.platform !== "win32" && "Windows only" }, () => {
+  const id = "01a1e68c-87f5-7db2-a99e-e53ca4c57bda";
+  assert.deepEqual(command({ agent: "codex", session: id, flags: [] }, "resume"), ["codex", "resume", "--no-daemon", id]);
+  assert.deepEqual(command({ agent: "codex", session: id, flags: [] }, "fork"), ["codex", "fork", "--no-daemon", id]);
+  assert.deepEqual(command({ agent: "codex", session: id, flags: ["--no-daemon", "-m", "gpt-5"] }, "resume"), ["codex", "resume", "--no-daemon", "-m", "gpt-5", id]);
 });

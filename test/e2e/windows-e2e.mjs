@@ -202,21 +202,22 @@ test("the dialog's Resume types into an idle shell, with every flag", async () =
 
 let t3, codexId;
 
+// Typed in a Herdr terminal, codex runs through Revive's wrapper, with --no-daemon.
 test("a Codex session is remembered at its first message", async () => {
   t3 = await terminal();
   send(t3, "codex --yolo");
-  await waitFor("Codex", () => read(t3).includes('FAKE CODEX ["--yolo"]'), 45_000, t3);
+  await waitFor("Codex", () => read(t3).includes('FAKE CODEX ["--no-daemon","--yolo"]'), 45_000, t3);
   await sleep(1000);
   assert.equal(labels(t3)["revive.session"] ?? "", "", "nothing before the first message");
   send(t3, "hi");
   codexId = await waitFor("a Codex record", () => labels(t3)["revive.session"], 45_000, t3);
   assert.equal(labels(t3)["revive.agent"], "codex");
-  assert.equal(labels(t3)["revive.flags"], '["--yolo"]');
+  assert.equal(labels(t3)["revive.flags"], '["--no-daemon","--yolo"]');
 });
 
 test("after a loss Codex comes back, without the approval-lifting flag", async () => {
   await loss();
-  await waitFor("the Codex resume", () => read(t3).includes(`FAKE CODEX ["resume","${codexId}"]`), 45_000, t3);
+  await waitFor("the Codex resume", () => read(t3).includes(`FAKE CODEX ["resume","--no-daemon","${codexId}"]`), 45_000, t3);
   assert.ok(read(t3).includes(`↻ Revive  resuming Codex session ${codexId.slice(0, 8)}`), read(t3));
 });
 
