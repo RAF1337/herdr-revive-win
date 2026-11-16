@@ -180,6 +180,14 @@ async function hook(args = []) {
   // The agent ends when the core stops, and its SessionEnd comes after: with
   // no core, there is no label to change, and `hc` would start a new core.
   if (!(await coreUp())) return;
+  // Windows: an end is matched by its session id alone. Codex gives SessionEnd
+  // 3 seconds, and the process table (through PowerShell) takes most of that.
+  // A run the agent started as a tool has a session of its own, never this one.
+  if (WIN && event === "SessionEnd") {
+    const rec = readRecord((await getTerminal(t))?.labels);
+    if (rec?.session === session && endAction(rec.agent, payload.reason) === "forget") await label(t, clearArgs());
+    return;
+  }
   // Windows needs the process table to know the foreground: ask for both at once.
   const [raw, winTable] = WIN ? await Promise.all([getTerminal(t), processes()]) : [await getTerminal(t), null];
   const terminal = withForeground(raw, winTable);

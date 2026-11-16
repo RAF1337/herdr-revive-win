@@ -2,7 +2,7 @@
 // functions: these run on every platform.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { agentKey, carriedFlags, isOneShot, isShell, hookPayload } from "../mods/revive-win/lib/core.js";
+import { agentKey, carriedFlags, isOneShot, isShell, hookPayload, endAction } from "../mods/revive-win/lib/core.js";
 
 const CLAUDE = "C:\\Users\\me\\.local\\bin\\claude.exe";
 
@@ -34,4 +34,13 @@ test("npm's vendored codex.exe is Codex, with its flags", () => {
   assert.deepEqual(carriedFlags("codex", [exe, "--yolo", "-m", "gpt-5"]), ["--yolo", "-m", "gpt-5"]);
   assert.equal(isOneShot("codex", [exe, "exec", "hi"]), true);
   assert.equal(isOneShot("codex", [exe, "--yolo"]), false);
+});
+
+// Codex on Windows sends SessionEnd only when the person ends the session
+// (`/exit` says "other"); a closed pane or a killed Codex sends nothing.
+test("on Windows Codex's \"other\" means the person ended it", { skip: process.platform !== "win32" && "Windows only" }, () => {
+  assert.equal(endAction("codex", "other"), "forget");
+  assert.equal(endAction("codex", "clear"), "ignore");
+  assert.equal(endAction("codex", "resume"), "ignore");
+  assert.equal(endAction("claude", "other"), "keep");
 });

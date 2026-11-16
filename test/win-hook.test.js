@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, linkSync, copyFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { WINDOWS_ONLY } from "./helpers/platform.js";
 
@@ -60,11 +60,11 @@ process.exit(r.status ?? 0);
   const outer = agent("outer");
   const inner = agent("inner");
   let tookMs = 0;
-  const run = (payload, { nested = false } = {}) => {
+  const run = (payload, { nested = false, env = {} } = {}) => {
     const started = performance.now();
     const r = spawnSync(outer, [agentJs, ...argv], {
       input: typeof payload === "string" ? payload : JSON.stringify(payload),
-      env: { ...cleanEnv(), HC_TERMINAL_ID: "t1", REVIVE_HC: hc, FAKE_TERMINAL_PID: String(process.pid), NODE_BIN: process.execPath, ENGINE, NESTED: nested ? inner : "" },
+      env: { ...cleanEnv(), HC_TERMINAL_ID: "t1", REVIVE_HC: hc, FAKE_TERMINAL_PID: String(process.pid), NODE_BIN: process.execPath, ENGINE, NESTED: nested ? inner : "", ...env },
       encoding: "utf8",
       timeout: 60_000,
     });
@@ -130,4 +130,23 @@ test("a hook given garbage exits 0 and records nothing on Windows", { skip: WIND
   const r = f.run("not json");
   assert.equal(r.status, 0);
   assert.deepEqual(f.calls(), []);
+});
+
+test("on Windows a Codex /exit forgets its session, and another session's end changes nothing", { skip: WINDOWS_ONLY }, (t) => {
+  const codex = { ...remembered, "revive.agent": "codex" };
+  const f = setup({ labels: codex });
+  f.run({ hook_event_name: "SessionEnd", session_id: OTHER, reason: "other" }, { nested: true });
+  assert.deepEqual(f.calls(), []);
+  f.run(end("other"));
+  assert.equal(f.set(f.calls())["revive.session"], "");
+  t.diagnostic(`end hook wall time ${Math.round(f.took())} ms`);
+});
+
+// Codex gives SessionEnd 3 seconds, and reading the process list through
+// PowerShell takes most of that: an end is matched by its session id instead.
+test("on Windows an end doesn't need the process list", { skip: WINDOWS_ONLY }, () => {
+  const f = setup({ labels: { ...remembered, "revive.agent": "codex" } });
+  const noPwsh = { PATH: [dirname(process.execPath), join(process.env.SystemRoot ?? "C:\\Windows", "System32")].join(";") };
+  f.run(end("other"), { env: noPwsh });
+  assert.equal(f.set(f.calls())["revive.session"], "");
 });

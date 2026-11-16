@@ -28,6 +28,14 @@ const unless = (...keep) => (v) => !keep.includes(v);
 
 
 const claudeEnd = (reason) => (reason === "clear" || reason === "resume" ? "ignore" : reason === "other" ? "keep" : "forget");
+/**
+ * Codex on Windows sends SessionEnd only when the person ends the session
+ * (`/exit` says "other"); a closed pane or a killed Codex sends none. So there
+ * "other" is the person's own end. Elsewhere Claude Code's reasons stand.
+ */
+const codexEnd = (reason) => (globalThis.process?.platform === "win32"
+  ? (reason === "clear" || reason === "resume" ? "ignore" : "forget")
+  : claudeEnd(reason));
 
 // Codex accepts options before its subcommand. Skip their values too: a
 // profile or model named `exec` is still an interactive launch.
@@ -143,7 +151,7 @@ export const AGENTS = {
     apps: ["codex"],
     resume: (id, flags) => ["codex", "resume", ...flags, id],
     fork: (id, flags) => ["codex", "fork", ...flags, id],
-    end: claudeEnd,
+    end: codexEnd,
     env: ["CODEX_HOME"],
     oneShot: codexOneShot,
     carry: {
