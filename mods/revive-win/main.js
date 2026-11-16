@@ -87,7 +87,7 @@ async function engine(args) {
   try { r = await exec("node", [ENGINE(), ...args]); }
   catch (e) { return { ok: false, error: `Revive needs Node 20 or later on PATH (${e})` }; }
   if (r.code !== 0) return { ok: false, error: (r.stderr || r.stdout).trim() || `revive.mjs exited ${r.code}` };
-  return { ok: true, out: r.stdout };
+  return { ok: true, out: r.stdout, err: r.stderr };
 }
 
 // ── pieces ──────────────────────────────────────────────────────────────────
@@ -310,8 +310,10 @@ export default class Revive extends View {
     cx.spawn(async (cx) => {
       const r = await engine(["install"]);
       this.busy = false;
-      this.note = r.ok ? { level: "info", text: r.out.trim() } : { level: "error", text: r.error };
-      if (r.ok) notify({ title: "Revive", body: "Installed. New agent sessions are remembered from now on.", level: "success" });
+      // Install's warnings (stderr) belong in the note too: a missing pwsh, Codex's own setting.
+      this.note = r.ok ? { level: "info", text: [r.out, r.err].map((x) => x?.trim()).filter(Boolean).join("\n") } : { level: "error", text: r.error };
+      const codexOff = r.ok && r.out.includes("daemon_auto_start = false");
+      if (r.ok) notify({ title: "Revive", body: codexOff ? "Installed. Codex's background server is now off; see the note." : "Installed. New agent sessions are remembered from now on.", level: "success" });
       this.load(cx, { setup: true });
     });
   }
@@ -548,6 +550,7 @@ export default class Revive extends View {
     const missing = [
       ...(s.pwshInstalled === false ? ["PowerShell 7 (pwsh) is required"] : []),
       ...(s.core === false ? ["herdr-core isn't answering"] : []),
+      ...(s.codexDaemon === "on" ? ["Codex's background server is on: Codex sessions aren't remembered"] : []),
       ...agents.filter((k) => !s[k]).map((k) => (k === "pi" || k === "omp" ? `${AGENTS[k].name} extension missing` : `${AGENTS[k].name} hooks missing`)),
       ...(shells.length ? [] : ["shell block missing"]),
     ];
