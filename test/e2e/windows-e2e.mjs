@@ -11,7 +11,7 @@
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, rmSync, readFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync, rmSync, readFileSync, copyFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -53,6 +53,7 @@ for (const d of [home, join(appdata, "herdr-core"), bin, work, state]) mkdirSync
 const fakes = {
   USERPROFILE: home, HOME: home,
   FAKE_CLAUDE_NODE: process.execPath, FAKE_CLAUDE_SCRIPT: join(HERE, "fake-claude.cjs"), FAKE_CLAUDE_ENGINE: ENGINE, FAKE_CLAUDE_STATE: state,
+  FAKE_CODEX_SCRIPT: join(HERE, "fake-codex.cjs"),
 };
 const profile = join(root, "test-profile.ps1");
 writeFileSync(profile, [
@@ -66,10 +67,12 @@ writeFileSync(join(appdata, "herdr-core", "config.toml"), `shell = ["pwsh", "-No
 const compiled = spawnSync("powershell.exe", ["-NoLogo", "-NoProfile", "-Command",
   `Add-Type -TypeDefinition (Get-Content -Raw '${join(HERE, "claude-launcher.cs")}') -OutputAssembly '${join(bin, "claude.exe")}' -OutputType ConsoleApplication -ReferencedAssemblies System.Core`], { encoding: "utf8" });
 if (!existsSync(join(bin, "claude.exe"))) throw new Error(`couldn't build the stand-in claude.exe: ${compiled.stderr}`);
+// The same launcher as codex.exe: it runs fake-codex.cjs (FAKE_CODEX_SCRIPT).
+copyFileSync(join(bin, "claude.exe"), join(bin, "codex.exe"));
 
 const env = { ...process.env };
 for (const k of Object.keys(env)) {
-  if (/^(HC_TERMINAL_ID|HC_TERMINAL_SOCKET|HC_SCOPE|CLAUDECODE|CLAUDE_PID|CLAUDE_CONFIG_DIR|CLAUDE_CODE_.*|REVIVE_.*)$/.test(k)) delete env[k];
+  if (/^(HC_TERMINAL_ID|HC_TERMINAL_SOCKET|HC_SCOPE|CLAUDECODE|CLAUDE_PID|CLAUDE_CONFIG_DIR|CLAUDE_CODE_.*|CODEX_.*|REVIVE_.*)$/.test(k)) delete env[k];
 }
 // The core reads its config.toml from APPDATA; the engine run from here
 // (the dialog's Resume) sees the same scratch home as the terminals.
@@ -195,6 +198,31 @@ test("the dialog's Resume types into an idle shell, with every flag", async () =
   const r = engine("resume", t2);
   assert.equal(r.status, 0, r.stderr);
   await waitFor("the manual resume", () => read(t2).split(`FAKE CLAUDE ${third}`).length - 1 >= 2);
+});
+
+let t3, codexId;
+
+test("a Codex session is remembered at its first message", async () => {
+  t3 = await terminal();
+  send(t3, "codex --yolo");
+  await waitFor("Codex", () => read(t3).includes('FAKE CODEX ["--yolo"]'), 45_000, t3);
+  await sleep(1000);
+  assert.equal(labels(t3)["revive.session"] ?? "", "", "nothing before the first message");
+  send(t3, "hi");
+  codexId = await waitFor("a Codex record", () => labels(t3)["revive.session"], 45_000, t3);
+  assert.equal(labels(t3)["revive.agent"], "codex");
+  assert.equal(labels(t3)["revive.flags"], '["--yolo"]');
+});
+
+test("after a loss Codex comes back, without the approval-lifting flag", async () => {
+  await loss();
+  await waitFor("the Codex resume", () => read(t3).includes(`FAKE CODEX ["resume","${codexId}"]`), 45_000, t3);
+  assert.ok(read(t3).includes(`↻ Revive  resuming Codex session ${codexId.slice(0, 8)}`), read(t3));
+});
+
+test("a Codex session ended with /exit is forgotten", async () => {
+  send(t3, "exit");
+  await waitFor("the Codex record to go", () => !labels(t3)["revive.session"], 30_000, t3);
 });
 
 test("the hook's time, and the person's herdr-core unchanged", (t) => {
