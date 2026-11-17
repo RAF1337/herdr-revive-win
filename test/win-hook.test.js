@@ -150,3 +150,23 @@ test("on Windows an end doesn't need the process list", { skip: WINDOWS_ONLY }, 
   f.run(end("other"), { env: noPwsh });
   assert.equal(f.set(f.calls())["revive.session"], "");
 });
+
+test("a pi SessionStart on Windows is remembered with its session file, and /quit forgets it", { skip: WINDOWS_ONLY }, () => {
+  const PI_ID = "01a1ebb1-b38e-717b-89d4-22638256b32c";
+  const file = String.raw`C:\Users\me\.pi\agent\sessions\--w--\2026-11-17T22-47-34-031Z_` + PI_ID + ".jsonl";
+  const f = setup();
+  const r = f.run({ ...start, session_id: PI_ID, transcript_path: file, argv: ["pi", "--model", "x"] });
+  assert.equal(r.status, 0, r.stderr);
+  const got = f.set(f.calls());
+  assert.equal(got["revive.agent"], "pi");
+  assert.equal(got["revive.session"], PI_ID);
+  assert.equal(got["revive.transcript"], file);
+  assert.equal(got["revive.flags"], '["--model","x"]');
+  const piRec = { "revive.agent": "pi", "revive.session": PI_ID, "revive.shell": String(process.pid) };
+  const kept = setup({ labels: piRec });
+  kept.run({ hook_event_name: "SessionEnd", session_id: PI_ID, reason: "other" });
+  assert.deepEqual(kept.calls(), []);
+  const quit = setup({ labels: piRec });
+  quit.run({ hook_event_name: "SessionEnd", session_id: PI_ID, reason: "prompt_input_exit" });
+  assert.equal(quit.calls().length, 1);
+});

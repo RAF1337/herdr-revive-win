@@ -27,7 +27,7 @@ import { execFile, execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, writeFileSync, copyFileSync, mkdirSync, renameSync, realpathSync, rmSync, statSync, lstatSync, symlinkSync, chmodSync } from "node:fs";
 import { createConnection } from "node:net";
 import { homedir } from "node:os";
-import { delimiter, dirname, join } from "node:path";
+import { delimiter, dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import {
@@ -232,7 +232,7 @@ async function hook(args = []) {
       env: null,
       needs: needs.length ? JSON.stringify(needs) : null,
       // pi and omp keep sessions where their flags, environment or settings say: the file named is the one to check.
-      transcript: EXTENSION_AGENTS.includes(key) && String(payload.transcript ?? "").startsWith("/") ? payload.transcript : null,
+      transcript: EXTENSION_AGENTS.includes(key) && isAbsolute(String(payload.transcript ?? "")) ? payload.transcript : null,
       shell: terminal.pid ?? "",
       since: table.get(terminal.pid)?.since ?? null,
       at: same ? rec.at ?? Date.now() : Date.now(),
