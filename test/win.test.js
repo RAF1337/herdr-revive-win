@@ -105,3 +105,14 @@ test("Codex started through npm is in front, not its background server", () => {
   ]);
   assert.deepEqual(effectiveForeground(t, table), { pid: 12, argv: [CODEX_EXE, "--yolo"], cwd: String.raw`C:\w` });
 });
+
+test("pi started through npm is in front", () => {
+  const PI_JS = String.raw`C:\Users\me\AppData\Roaming\npm\node_modules\@earendil-works\pi-coding-agent\dist\bundle\cli.js`;
+  const t = { pid: 10, cwd: String.raw`C:\w`, foreground: { pid: 10, argv: ["pwsh.exe"], cwd: String.raw`C:\w` } };
+  const table = new Map([
+    [10, proc(5, "pwsh.exe -NoExit")],
+    [11, proc(10, `"C:\Windows\system32\cmd.exe" /d /s /c "pi.cmd --model x"`)],
+    [12, proc(11, `"C:\Program Files\nodejs\node.exe" ${PI_JS} --model x`)],
+  ]);
+  assert.equal(effectiveForeground(t, table).pid, 12);
+});

@@ -192,6 +192,8 @@ export const AGENTS = {
     apps: ["pi"],
     // pi sets its process title to `pi`, so the first word is always its own.
     argv0Only: true,
+    // Windows keeps the real command line, `node …\pi-coding-agent\…\cli.js`: its script names it.
+    script: /[\\/]pi-coding-agent[\\/]/i,
     resume: (id, flags) => ["pi", ...flags, "--session", id],
     fork: (id, flags) => ["pi", ...flags, "--fork", id],
     env: ["PI_CODING_AGENT_DIR", "PI_CODING_AGENT_SESSION_DIR"],
@@ -353,6 +355,7 @@ export function agentKey(app, argv = []) {
   for (const [i, word] of argv.slice(0, 2).entries()) {
     for (const [key, agent] of Object.entries(AGENTS)) {
       if (isBin(agent, word) && !(i > 0 && agent.argv0Only)) return key;
+      if (i === 1 && agent.script?.test(String(word))) return key;
     }
   }
   return null;

@@ -53,3 +53,12 @@ test("on Windows Revive's own codex resume and fork never use the background ser
   assert.deepEqual(command({ agent: "codex", session: id, flags: [] }, "fork"), ["codex", "fork", "--no-daemon", id]);
   assert.deepEqual(command({ agent: "codex", session: id, flags: ["--no-daemon", "-m", "gpt-5"] }, "resume"), ["codex", "resume", "--no-daemon", "-m", "gpt-5", id]);
 });
+
+const PI_JS = String.raw`C:\Users\me\AppData\Roaming\npm\node_modules\@earendil-works\pi-coding-agent\dist\bundle\cli.js`;
+
+test("pi from npm is pi; pi as an argument isn't", () => {
+  assert.equal(agentKey(null, [String.raw`C:\Program Files\nodejs\node.exe`, PI_JS, "--model", "x"]), "pi");
+  assert.equal(agentKey(null, [String.raw`C:\bin\pi.exe`]), "pi");
+  assert.equal(agentKey(null, ["vim.exe", "pi"]), null);
+  assert.equal(agentKey(null, ["ssh", "pi"]), null);
+});
