@@ -715,6 +715,8 @@ const isExtension = (key, path) => readText(path).includes(EXTENSIONS[key].marke
  * from its real place.
  */
 export const piStub = (source) => `// ${EXTENSIONS.pi.marker}\nexport { default } from "${pathToFileURL(source).href}";\n`;
+/** Whether a file's text is a stub piStub wrote, for this mod folder or another. */
+const isPiStub = (text) => /^\/\/ herdr-revive: pi extension\nexport \{ default \} from "file:\/\/\/[^"\n]*\/pi\/revive\.ts";\n$/.test(text);
 const factoryDir = () => agentDirs({ ...process.env, HOME: homedir() }).factory;
 const cursorDir = () => agentDirs({ ...process.env, HOME: homedir() }).cursor;
 
@@ -1181,8 +1183,10 @@ function linkExtension(key, remove) {
   const source = EXTENSIONS[key].source;
   const real = (p) => { try { return realpathSync(p); } catch { return null; } };
   if (WIN) {
-    // A stub, not a link; one from an earlier mod folder is Revive's too, and is rewritten.
-    const ours = isExtension(key, target);
+    // A stub, not a link; one from an earlier mod folder is Revive's too, and is
+    // rewritten. Only a plain file in the stub's exact shape is Revive's: a link
+    // or a copy of an extension that carries the marker belongs to someone else.
+    const ours = Boolean(lstatSync(target, { throwIfNoEntry: false })?.isFile()) && isPiStub(readText(target));
     if (remove) {
       if (!ours) return false;
       rmSync(target);
@@ -1220,7 +1224,8 @@ export function doctorReport() {
     return {
       engine: ENGINE,
       ...hooks,
-      ...Object.fromEntries(EXTENSION_AGENTS.map((key) => [key, WIN_AGENTS.includes(key) && existsSync(EXTENSIONS[key].dir()) ? safe(() => isExtension(key, extensionPath(key))) : null])),
+      // A stub counts only when it points at this mod folder: one left by a moved mod loads nothing.
+      ...Object.fromEntries(EXTENSION_AGENTS.map((key) => [key, WIN_AGENTS.includes(key) && existsSync(EXTENSIONS[key].dir()) ? safe(() => readText(extensionPath(key)) === piStub(EXTENSIONS[key].source)) : null])),
       codexDaemon: existsSync(codexDir()) ? safe(() => daemonSetting(readText(codexConfig()))) : null,
       shell: { pwsh: safe(() => readText(profilePath()).includes(BEGIN)) },
       pwshInstalled: pwshInstalled(),

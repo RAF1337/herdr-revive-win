@@ -334,3 +334,23 @@ test("no pi folder: nothing for pi, and doctor says null", { skip: WINDOWS_ONLY 
   assert.equal(existsSync(join(w.h, ".pi")), false);
   assert.equal(JSON.parse(w.engine("doctor").stdout).pi, null);
 });
+
+test("a file with Revive's marker that isn't Revive's stub is left alone by install and uninstall", { skip: WINDOWS_ONLY }, () => {
+  const w = home();
+  const theirs = "// herdr-revive: pi extension\nconsole.log('a copy someone edited');\n";
+  mkdirSync(dirname(stubOf(w)), { recursive: true });
+  writeFileSync(stubOf(w), theirs);
+  const r = w.engine("install");
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout + r.stderr, /is not Revive's pi extension/);
+  assert.equal(w.read(stubOf(w)), theirs);
+  w.engine("uninstall");
+  assert.equal(w.read(stubOf(w)), theirs);
+});
+
+test("doctor says false for a stub that points at another mod folder", { skip: WINDOWS_ONLY }, () => {
+  const w = home();
+  mkdirSync(dirname(stubOf(w)), { recursive: true });
+  writeFileSync(stubOf(w), piStub(String.raw`C:\old\pi\revive.ts`));
+  assert.equal(JSON.parse(w.engine("doctor").stdout).pi, false);
+});
