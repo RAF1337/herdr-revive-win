@@ -173,3 +173,14 @@ test("the block stays out of the way when told to, and in shells that aren't the
   other.run();
   assert.equal(other.engineCalls().length, 0, "not the terminal's pid");
 });
+
+test("pi resumes and forks by session id, with its flags, in a quoted folder", async () => {
+  const { command } = await import("../mods/revive-win/lib/core.js");
+  const rec = { agent: "pi", session: ID, cwd: String.raw`C:\it's`, flags: ["--model", "x"] };
+  assert.equal(psResumeLine(rec), String.raw`Set-Location -LiteralPath 'C:\it''s' -ErrorAction Stop; & 'pi' '--model' 'x' '--session' '` + ID + "'");
+  const script = psResumeScript(rec, "C:\m\revive.mjs");
+  assert.match(script, /resuming /);
+  assert.match(script, /'pi'/);
+  assert.ok(script.includes("& 'pi' '--model' 'x' '--session'"), script);
+  assert.deepEqual(command(rec, "fork"), ["pi", "--model", "x", "--fork", ID]);
+});
