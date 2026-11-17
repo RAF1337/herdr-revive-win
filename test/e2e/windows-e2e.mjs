@@ -69,6 +69,11 @@ const compiled = spawnSync("powershell.exe", ["-NoLogo", "-NoProfile", "-Command
 if (!existsSync(join(bin, "claude.exe"))) throw new Error(`couldn't build the stand-in claude.exe: ${compiled.stderr}`);
 // The same launcher as codex.exe: it runs fake-codex.cjs (FAKE_CODEX_SCRIPT).
 copyFileSync(join(bin, "claude.exe"), join(bin, "codex.exe"));
+// pi the way npm installs it: pi.cmd runs node on the package's cli.js.
+const piCli = join(root, "npm", "node_modules", "@earendil-works", "pi-coding-agent", "dist", "bundle", "cli.js");
+mkdirSync(dirname(piCli), { recursive: true });
+copyFileSync(join(HERE, "fake-pi.cjs"), piCli);
+writeFileSync(join(bin, "pi.cmd"), `@"%FAKE_CLAUDE_NODE%" "${piCli}" %*\r\n`);
 
 const env = { ...process.env };
 for (const k of Object.keys(env)) {
@@ -224,6 +229,39 @@ test("after a loss Codex comes back, without the approval-lifting flag", async (
 test("a Codex session ended with /exit is forgotten", async () => {
   send(t3, "exit");
   await waitFor("the Codex record to go", () => !labels(t3)["revive.session"], 30_000, t3);
+});
+
+let t4, piId;
+
+test("a pi session is remembered with its session file", async () => {
+  t4 = await terminal();
+  send(t4, "pi --model x");
+  piId = await waitFor("a pi record", () => labels(t4)["revive.session"], 45_000, t4);
+  assert.equal(labels(t4)["revive.agent"], "pi");
+  assert.equal(labels(t4)["revive.flags"], '["--model","x"]');
+  assert.ok(labels(t4)["revive.transcript"].endsWith(`${piId}.jsonl`), labels(t4)["revive.transcript"]);
+});
+
+test("the dialog shows the pi session as running, and won't type into it", async () => {
+  const r = engine("list", "--focus", t4);
+  assert.equal(r.status, 0, r.stderr);
+  const entry = JSON.parse(r.stdout).entries.find((e) => e.address === t4);
+  assert.equal(entry?.state, "running", r.stdout);
+  const resume = engine("resume", t4);
+  assert.equal(resume.status, 1);
+  assert.match(resume.stderr, /already running/);
+});
+
+test("after a loss pi comes back with its flags", async () => {
+  await loss();
+  await waitFor("the pi resume", () => read(t4).includes(`FAKE PI ["--model","x","--session","${piId}"]`), 45_000, t4);
+  assert.ok(read(t4).includes(`↻ Revive  resuming pi session ${piId.slice(0, 8)}`), read(t4));
+});
+
+test("a pi session ended with /quit is forgotten", async () => {
+  await waitFor("the resumed pi's record", () => read(t4).includes(`FAKE PI SESSION ${piId}`), 30_000, t4);
+  send(t4, "quit");
+  await waitFor("the pi record to go", () => !labels(t4)["revive.session"], 30_000, t4);
 });
 
 test("the hook's time, and the person's herdr-core unchanged", (t) => {
