@@ -1,17 +1,17 @@
 # Revive for Windows
 
-Bring your Claude Code and Codex sessions back in the **Herdr desktop app on Windows** after a reboot, a logout or a herdr-core crash.
+Bring your Claude Code, Codex and pi sessions back in the **Herdr desktop app on Windows** after a reboot, a logout or a herdr-core crash.
 
 ![Revive for Windows](preview.png)
 
-When herdr-core loses a terminal, it gives the pane a fresh PowerShell in its last folder and never runs the original command again. Revive remembers each Claude Code and Codex session on its terminal. When that terminal's new shell starts, Revive runs `claude --resume <id>` (or `codex resume <id>`) in it, in the same folder and with the same safe launch flags, and your conversation is back.
+When herdr-core loses a terminal, it gives the pane a fresh PowerShell in its last folder and never runs the original command again. Revive remembers each Claude Code, Codex and pi session on its terminal. When that terminal's new shell starts, Revive runs `claude --resume <id>` (or `codex resume <id>`, or `pi --session <id>`) in it, in the same folder and with the same safe launch flags, and your conversation is back.
 
 > **Unofficial and temporary.** This is a Windows build of [dmazlum/herdr-revive](https://github.com/dmazlum/herdr-revive) (macOS and Linux), not made or supported by its author. It is meant to last only until Herdr or the original covers Windows. It is provided as is, without warranty or support; issues are welcome but may not be answered.
 
 ## What it does
 
-- **Remembers** each interactive Claude Code session in a Herdr terminal, from Claude Code's `SessionStart` hook, and each Codex session at its first message.
-- **Forgets** a session you end yourself (`/exit`). It keeps one that was cut off by a reboot, a logout or a core crash.
+- **Remembers** each interactive Claude Code session in a Herdr terminal, from Claude Code's `SessionStart` hook, each Codex session at its first message, and each pi session when pi starts (through a small pi extension).
+- **Forgets** a session you end yourself (`/exit`, or `/quit` in pi). It keeps one that was cut off by a reboot, a logout or a core crash.
 - **Resumes** it in the recovered terminal at the first prompt and prints `↻ Revive  resuming Claude Code session 9e458eb4`.
 - **Leaves out** `--dangerously-skip-permissions`, Codex's `--yolo` and other approval-lifting flags on an automatic resume. A resume you start from the dialog keeps them.
 - **Tries once:** a resume that fails within 15 seconds is not tried again at every start.
@@ -22,7 +22,7 @@ When herdr-core loses a terminal, it gives the pane a fresh PowerShell in its la
 - Windows 10 or 11 with the Herdr desktop app (herdr-core's `hc` on `PATH`)
 - PowerShell 7 (`pwsh`): [aka.ms/powershell](https://aka.ms/powershell). Windows PowerShell 5.1 is not supported.
 - Node 20 or later on `PATH`
-- Claude Code (the native installer or npm), Codex (npm), or both
+- Claude Code (the native installer or npm), Codex (npm), pi (npm), or any of them
 
 ## Install
 
@@ -32,14 +32,14 @@ In Herdr, open an agent and say:
 
 > Add the Herdr mod from github.com/RAF1337/herdr-revive-win.
 
-It copies `mods\revive-win` into your Herdr mods folder, merges `keys.json` into yours (it asks before replacing a key you already use), and checks the mod. Then press `ctrl-shift-r` and click **Install** in the dialog's footer. From then on, every new Claude Code and Codex session in Herdr is remembered. Claude Code sessions that were already running show a **Remember** button in the dialog.
+It copies `mods\revive-win` into your Herdr mods folder, merges `keys.json` into yours (it asks before replacing a key you already use), and checks the mod. Then press `ctrl-shift-r` and click **Install** in the dialog's footer. From then on, every new Claude Code, Codex and pi session in Herdr is remembered. Claude Code sessions that were already running show a **Remember** button in the dialog.
 
 ### By hand
 
 1. Copy `mods\revive-win` to `%USERPROFILE%\.config\herdr-app\mods\revive-win`.
 2. Run `herdr-app check %USERPROFILE%\.config\herdr-app\mods\revive-win`.
 3. Add `"ctrl-shift-r": "mod.open:revive-win"` to the `global` section of `%USERPROFILE%\.config\herdr-app\keys.json`.
-4. Run `node %USERPROFILE%\.config\herdr-app\mods\revive-win\revive.mjs install`. This adds a `SessionStart` and a `SessionEnd` hook group to `%USERPROFILE%\.claude\settings.json` (if `%USERPROFILE%\.claude` exists), after your own groups, and a block to your PowerShell 7 profile (created if missing). If `%USERPROFILE%\.codex` exists, it also sets up Codex: see [Codex](#codex). The first change to each file keeps its original as `<file>.revive-backup`.
+4. Run `node %USERPROFILE%\.config\herdr-app\mods\revive-win\revive.mjs install`. This adds a `SessionStart` and a `SessionEnd` hook group to `%USERPROFILE%\.claude\settings.json` (if `%USERPROFILE%\.claude` exists), after your own groups, and a block to your PowerShell 7 profile (created if missing). If `%USERPROFILE%\.codex` exists, it also sets up Codex: see [Codex](#codex). If `%USERPROFILE%\.pi\agent` exists, it also sets up pi: see [pi](#pi). The first change to each file keeps its original as `<file>.revive-backup`.
 5. Run `node …\revive.mjs doctor` to see what is in place.
 6. Sessions that were already running are not remembered yet: `node …\revive.mjs adopt --dry-run` lists them, and `adopt` remembers them.
 
@@ -47,16 +47,16 @@ Optional: `restore_screen = true` in `%APPDATA%\herdr-core\config.toml` shows Cl
 
 ## Uninstall
 
-Run `node %USERPROFILE%\.config\herdr-app\mods\revive-win\revive.mjs uninstall`. It takes Revive's hooks, its Codex setting and its profile block out again, and deletes the profile if Revive created it. Then delete the `mods\revive-win` folder and the `ctrl-shift-r` line in `keys.json`.
+Run `node %USERPROFILE%\.config\herdr-app\mods\revive-win\revive.mjs uninstall`. It takes Revive's hooks, its Codex setting, its pi extension and its profile block out again, and deletes the profile if Revive created it. Then delete the `mods\revive-win` folder and the `ctrl-shift-r` line in `keys.json`.
 
 ## Known limits
 
-- Claude Code and Codex only, in PowerShell 7 terminals on this computer.
+- Claude Code, Codex and pi only, in PowerShell 7 terminals on this computer.
 - Claude Code starts about 2.5–3 seconds slower, and Codex's first message takes about as much longer, because the start hook reads the process list through PowerShell.
 - The dialog's list takes about 3 seconds to fill.
 - Sessions that started before Revive was installed may not notice `/exit`; close the pane to drop one for sure.
 - A session with no message yet has nothing to resume.
-- Codex sessions that were running before Revive was installed aren't remembered (no **Remember** for Codex); start them again.
+- Codex and pi sessions that were running before Revive was installed aren't remembered (no **Remember** for them); start them again.
 
 ## Codex
 
@@ -81,6 +81,12 @@ It stops Codex from starting that background server by itself. It doesn't stop a
 If Herdr starts Codex for you without PowerShell (not by typing `codex` in a terminal) while a background server is running, that session isn't remembered; the dialog says so when you open it on that pane. Start it as `codex` in the terminal, or with `codex --no-daemon`.
 
 Also good to know: Codex records a session at its first message, so a Codex you open and leave empty isn't remembered. Codex asks you to trust Revive's hooks the next time it starts. `/exit` forgets a Codex session; closing its pane or a crash keeps it.
+
+## pi
+
+pi has no hooks file, so Revive uses a pi extension. Install writes one small file, `%USERPROFILE%\.pi\agent\extensions\herdr-revive.ts` (or under `PI_CODING_AGENT_DIR`), that loads Revive's extension from the mod folder. It needs no admin rights, and Revive doesn't touch pi's `settings.json`. A file of yours with that name is left alone, and install says so.
+
+pi loads the extension the next time it starts, or at `/reload`. `/quit` (or Ctrl+C twice, or Ctrl+D) forgets a pi session; closing its pane or a crash keeps it. `uninstall` deletes the file. If pi's folder doesn't exist yet (pi never ran), run pi once and then `install` again.
 
 ## Settings
 

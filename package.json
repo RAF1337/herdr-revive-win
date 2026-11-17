@@ -1,6 +1,6 @@
 {
   "name": "herdr-revive-win",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "Windows build of herdr-revive: bring back the Claude Code session a Herdr desktop-app terminal lost to a restart or reboot.",

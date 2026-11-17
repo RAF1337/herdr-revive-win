@@ -1,12 +1,12 @@
 # Revive for Windows
 
-Revive for Windows brings back the Claude Code or Codex session a Herdr desktop-app terminal lost to a reboot, a logout or a herdr-core crash: in the same pane, in the same folder, with the same conversation and safe launch flags. Its dialog (`ctrl-shift-r`) lists remembered sessions, resumes one by hand, and forks the focused session into a new pane beside it. It is an unofficial, temporary Windows build of [dmazlum/herdr-revive](https://github.com/dmazlum/herdr-revive) (macOS and Linux), and supports Claude Code and Codex in PowerShell 7 terminals only.
+Revive for Windows brings back the Claude Code, Codex or pi session a Herdr desktop-app terminal lost to a reboot, a logout or a herdr-core crash: in the same pane, in the same folder, with the same conversation and safe launch flags. Its dialog (`ctrl-shift-r`) lists remembered sessions, resumes one by hand, and forks the focused session into a new pane beside it. It is an unofficial, temporary Windows build of [dmazlum/herdr-revive](https://github.com/dmazlum/herdr-revive) (macOS and Linux), and supports Claude Code, Codex and pi in PowerShell 7 terminals only.
 
 ![Revive for Windows](preview.png)
 
 ## Installing it (for the agent doing it)
 
-This is the Windows build. It supports Claude Code and Codex in the Herdr desktop app's terminals, which run PowerShell 7 (herdr-core's default shell on Windows). See *Windows* at the end for how it differs.
+This is the Windows build. It supports Claude Code, Codex and pi in the Herdr desktop app's terminals, which run PowerShell 7 (herdr-core's default shell on Windows). See *Windows* at the end for how it differs.
 
 1. Read every file in this repository before copying anything.
 2. Copy `mods\revive-win` to `%USERPROFILE%\.config\herdr-app\mods\revive-win`, as a copy, not a link.
@@ -20,11 +20,11 @@ This is the Windows build. It supports Claude Code and Codex in the Herdr deskto
    file if it is missing. If `%USERPROFILE%.codex` exists, it adds the same hooks to
    `.codexhooks.json` and turns Codex's shared background server off with
    `daemon_auto_start = false` under `[features]` in `.codexconfig.toml` (a setting the
-   person wrote stays); Codex asks to trust the new hooks at its next start. It keeps the
+   person wrote stays); Codex asks to trust the new hooks at its next start. If pi's folder (`PI_CODING_AGENT_DIR`, else `%USERPROFILE%\.pi\agent`) exists, it writes Revive's pi extension stub to `extensions\herdr-revive.ts` there; pi loads it at its next start or `/reload`. It keeps the
    original of each file as `.revive-backup`. It wires no other agent on Windows.
    `uninstall` takes all of it out again, and removes a profile it created.
 6. Run `node %USERPROFILE%\.config\herdr-app\mods\revive-win\revive.mjs doctor` and report what it shows
-   (`claude`, `codex`, `codexDaemon`, `shell.pwsh`, `pwshInstalled`, `hc`, `core`, `coreShell`, `restoreScreen`, `unremembered`).
+   (`claude`, `codex`, `codexDaemon`, `pi`, `shell.pwsh`, `pwshInstalled`, `hc`, `core`, `coreShell`, `restoreScreen`, `unremembered`).
 7. New sessions are remembered from now on. Sessions already running are not: `install` and
    `doctor` (`unremembered`) say how many `adopt` could remember. If there are any, run
    `revive.mjs adopt --dry-run`, show the person what it lists, and run `adopt` if they want.
@@ -35,7 +35,7 @@ The dialog checks this repository's releases once a day and offers the prompt th
 
 1. Replace the installed folder (normally `%USERPROFILE%\.config\herdr-app\mods\revive-win`) with the release's `mods\revive-win`, in place, keeping the folder's name.
 2. Run `herdr-app check` on the folder. It must pass.
-3. Run `revive.mjs doctor`. The hooks and the profile block point at the same folder, so they keep working. If `doctor` shows something missing (from 0.2.0 on: Codex's hooks and `codexDaemon`), tell the person what `install` would change and ask before running it.
+3. Run `revive.mjs doctor`. The hooks and the profile block point at the same folder, so they keep working. If `doctor` shows something missing (from 0.2.0 on: Codex's hooks and `codexDaemon`; from 0.3.0 on: `pi`), tell the person what `install` would change and ask before running it.
 
 ## What you see
 
@@ -489,15 +489,17 @@ This build adds Windows to upstream's macOS and Linux design. The Windows code i
 - **Codex.** Codex runs its hooks from its shared background server (`[features] daemon_auto_start`, on by default) unless that is off, and from there they lack `HC_TERMINAL_ID`: Revive can't tell which terminal the session is in, and `SessionEnd` comes late or never. So `install` adds `daemon_auto_start = false # added by Revive (herdr-revive-win)` under `[features]` in `~/.codex/config.toml` (or `$CODEX_HOME`), creating the table if needed and keeping the rest of the file byte for byte (`lib/codexconfig.js`, a line edit, no TOML parser), and says so on stdout and in the dialog. A setting the person wrote (`daemon_auto_start` under `[features]`, a dotted `features.daemon_auto_start`, an inline `features = { … }`) is never changed; a `true` gets a warning, `doctor`'s `codexDaemon: "on"` and a footer line. A file that sets its features with top-level dotted keys gets `features.daemon_auto_start = false # added by Revive (herdr-revive-win)` after them instead (a second `[features]` table would be invalid TOML, and Codex wouldn't start); an inline `features = { … }` without the key is left as it is, with the same warning. Text inside multi-line strings and arrays is never read as a table or a key. `uninstall` and `--no-codex` take out only Revive's line. In a Herdr pane npm's Codex runs as `pwsh → node …\@openai\codex\bin\codex.js → codex.exe` (the vendored one); the background server's `codex.exe app-server` and `codex-windows-sandbox-setup.exe` are never the session. With the server off, Codex sends `SessionStart` at a session's first message and `SessionEnd` only when the person ends it (`/exit` says `other`); a closed pane or a killed Codex sends none. So on Windows Codex's `other` forgets the record.
 - **`--no-daemon`.** `daemon_auto_start = false` only stops Codex from starting its background server; a Codex still joins one that is already running (the Codex desktop app's, an editor's, one from before install), and its hooks then lack the pane. So in a Herdr terminal (`HC_TERMINAL_ID` set, not a herdr TUI pane) the profile block defines a `codex` function that runs the real `codex` (`Get-Command -CommandType ExternalScript, Application`, npm's `codex.ps1` first) with `--no-daemon` first, unless `--no-daemon` is already there or the first word is a subcommand that starts no session (`CODEX_PLAIN` in `lib/pwsh.js`: `exec`, `e`, `login`, `logout`, `mcp`, `mcp-server`, `app-server`, `app`, `completion`, `sandbox`, `debug`, `apply`, `a`, `cloud`, `features`, `help`, `remote-control`). Revive's own `codex resume` and `codex fork` always carry `--no-daemon` on Windows (`codex resume --no-daemon … <id>`). A Codex Herdr starts without PowerShell while a server runs is not remembered; the no-record card says so.
 - **Ends are quick.** Codex gives `SessionEnd` 3 seconds, and the process table takes most of that. On Windows a `SessionEnd` is matched by its session id alone (a run an agent starts as a tool has a session of its own), without the process table.
-- **Not on Windows:** pi, omp, Droid and Cursor. Their code is here, but `install` and `doctor` skip them. Codex has no `adopt`. Shells other than PowerShell 7 are not supported either.
+- **pi.** Upstream links `pi/revive.ts` into pi's extensions folder; a link needs Developer Mode or admin rights on Windows, so `install` writes a stub there instead: `extensions\herdr-revive.ts` with the marker line `// herdr-revive: pi extension` and `export { default } from "file:///…/mods/revive-win/pi/revive.ts";` (`piStub` in `revive.mjs`). A stub from another mod folder is rewritten; a file there without the marker is left alone, with a warning; `uninstall` deletes only a file with the marker. It never touches pi's `settings.json`. npm's pi runs as `node …\@earendil-works\pi-coding-agent\dist\bundle\cli.js` (the process title rename doesn't change the Windows command line), so pi's `AGENTS` entry has `script: /[\\/]pi-coding-agent[\\/]/i`, matched against the second word; without it the dialog would call a running pi interrupted. Its session file is a `C:\…` path, kept as `revive.transcript` (any absolute path counts, not only `/…`). `/quit` forgets the record; a closed pane or a crash sends no end and keeps it.
+- **Not on Windows:** omp, Droid and Cursor. Their code is here, but `install` and `doctor` skip them. Codex and pi have no `adopt`. Shells other than PowerShell 7 are not supported either.
 - **Tests.** `npm test` runs `test/run.mjs`. On Windows it gives the suite a scratch `USERPROFILE`, `HOME`, `APPDATA` and PowerShell profile, an unreachable herdr-core, and no `HC_TERMINAL_*`. Without that, Node's `homedir()` follows `USERPROFILE` and ignores `HOME`, and tests would touch the person's real files. Upstream's tests that need `sh`, `ps`, shebang scripts, symlinks or Unix sockets are skipped on Windows (`test/helpers/platform.js`). `npm run e2e:win` (`test/e2e/windows-e2e.mjs`) runs the whole cycle against an isolated herdr-core.
 
 ## Done when
 
 - `herdr-app check %USERPROFILE%\.config\herdr-app\mods\revive-win` passes, and `herdr-app status` lists no errors.
-- `node …\revive.mjs doctor` shows `claude: true`, `shell.pwsh: true`, `pwshInstalled: true`, `hc: true` and `core: true`; with Codex, `codex: true` and `codexDaemon: "off"`.
-- `ctrl-shift-r` opens the dialog; its footer reads `Ready: Claude Code, pwsh` (`Ready: Claude Code, Codex, pwsh` with Codex).
+- `node …\revive.mjs doctor` shows `claude: true`, `shell.pwsh: true`, `pwshInstalled: true`, `hc: true` and `core: true`; with Codex, `codex: true` and `codexDaemon: "off"`; with pi, `pi: true`.
+- `ctrl-shift-r` opens the dialog; its footer reads `Ready: Claude Code, pwsh` (`Ready: Claude Code, Codex, pi, pwsh` with Codex and pi).
 - A Codex session gets its labels at its first message and, after a loss, its terminal prints `↻ Revive  resuming Codex session <id>`.
+- A pi session gets its labels when pi starts and, after a loss, its terminal prints `↻ Revive  resuming pi session <id>`.
 - A Claude Code session started in a Herdr terminal gets `revive.session`, `revive.cwd` and `revive.flags` labels (`hc get <terminal> --json`).
 - After `hc server stop` and `hc server start` (or a reboot and opening Herdr), that terminal prints `↻ Revive  resuming Claude Code session <id>` and shows the conversation.
 - A session ended with `/exit` does not come back.

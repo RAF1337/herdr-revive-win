@@ -9,7 +9,7 @@
 // the tests can run it under node.
 
 /** The installed version: the same as mod.json and package.json (test/version.test.js). */
-export const VERSION = "0.2.0";
+export const VERSION = "0.3.0";
 // Checks this repository's own releases, never upstream's macOS/Linux ones.
 const CHECK = true;
 export const REPO = "RAF1337/herdr-revive-win";
