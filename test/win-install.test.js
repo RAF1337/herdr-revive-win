@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { withShellBlock, winHookCommand, shellBlock, hasCli } from "../mods/revive-win/revive.mjs";
+import { withShellBlock, winHookCommand, shellBlock, hasCli, piStub } from "../mods/revive-win/revive.mjs";
 import { PROFILE_BEGIN, PROFILE_END } from "../mods/revive-win/lib/pwsh.js";
 import { WINDOWS_ONLY } from "./helpers/platform.js";
 
@@ -88,7 +88,7 @@ test("install adds Revive's hooks after the person's own, and backs the file up 
 test("install wires nothing for the agents Revive doesn't support on Windows", { skip: WINDOWS_ONLY }, () => {
   const w = home();
   w.engine("install");
-  for (const f of [join(".factory", "settings.json"), join(".factory", "hooks.json"), join(".cursor", "hooks.json"), join(".pi", "agent", "extensions"), join(".omp", "agent", "extensions")]) {
+  for (const f of [join(".factory", "settings.json"), join(".factory", "hooks.json"), join(".cursor", "hooks.json"), join(".omp", "agent", "extensions")]) {
     assert.equal(existsSync(join(w.h, f)), false, f);
   }
 });
@@ -135,7 +135,8 @@ test("doctor reports Claude Code, the pwsh block and herdr-core's settings", { s
   assert.equal(d.coreShell, null);
   assert.equal(d.codex, true);
   assert.equal(d.codexDaemon, "off");
-  for (const k of ["droid", "cursor", "pi", "omp"]) assert.equal(d[k], null, k);
+  for (const k of ["droid", "cursor", "omp"]) assert.equal(d[k], null, k);
+  assert.equal(d.pi, true);
   assert.equal(JSON.parse(home({ config: "restore_screen = true\n" }).engine("doctor").stdout).restoreScreen, true);
   const nu = home({ config: 'shell = ["nu"]\n' });
   assert.equal(JSON.parse(nu.engine("doctor").stdout).coreShell, "nu");
@@ -278,4 +279,58 @@ test("an inline features table is left alone, with a warning", { skip: WINDOWS_O
   const r = w.engine("install");
   assert.equal(w.read(config), "features = { web_search = true }\n");
   assert.ok(r.stderr.includes("Codex's background server stays on"), r.stderr);
+});
+
+// ── pi ──────────────────────────────────────────────────────────────────────
+
+const PI_SOURCE = join(dirname(ENGINE), "pi", "revive.ts");
+const stubOf = (w) => join(w.h, ".pi", "agent", "extensions", "herdr-revive.ts");
+
+test("the pi stub re-exports the mod's extension by file URL, under Revive's marker", { skip: WINDOWS_ONLY }, () => {
+  assert.equal(piStub("C:\\m\\pi\\revive.ts"), '// herdr-revive: pi extension\nexport { default } from "file:///C:/m/pi/revive.ts";\n');
+});
+
+test("install writes pi's stub, doctor sees it, uninstall removes it", { skip: WINDOWS_ONLY }, () => {
+  const w = home();
+  const r = w.engine("install");
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(w.read(stubOf(w)), piStub(PI_SOURCE));
+  let d = JSON.parse(w.engine("doctor").stdout);
+  assert.equal(d.pi, true);
+  assert.equal(d.omp, null);
+  assert.ok(w.engine("install").stdout.startsWith("Nothing to change."));
+  assert.equal(w.engine("uninstall").status, 0);
+  assert.equal(existsSync(stubOf(w)), false);
+  d = JSON.parse(w.engine("doctor").stdout);
+  assert.equal(d.pi, false);
+});
+
+test("a herdr-revive.ts that isn't Revive's is left alone", { skip: WINDOWS_ONLY }, () => {
+  const w = home();
+  mkdirSync(dirname(stubOf(w)), { recursive: true });
+  writeFileSync(stubOf(w), "// mine\n");
+  const r = w.engine("install");
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout + r.stderr, /is not Revive's pi extension/);
+  assert.equal(w.read(stubOf(w)), "// mine\n");
+  w.engine("uninstall");
+  assert.equal(w.read(stubOf(w)), "// mine\n");
+});
+
+test("a stub from another mod folder is replaced, and uninstall still removes it", { skip: WINDOWS_ONLY }, () => {
+  const w = home();
+  mkdirSync(dirname(stubOf(w)), { recursive: true });
+  writeFileSync(stubOf(w), piStub("C:\\old\\pi\\revive.ts"));
+  assert.equal(w.engine("install").status, 0);
+  assert.equal(w.read(stubOf(w)), piStub(PI_SOURCE));
+  w.engine("uninstall");
+  assert.equal(existsSync(stubOf(w)), false);
+});
+
+test("no pi folder: nothing for pi, and doctor says null", { skip: WINDOWS_ONLY }, () => {
+  const w = home();
+  rmSync(join(w.h, ".pi"), { recursive: true, force: true });
+  assert.equal(w.engine("install").status, 0);
+  assert.equal(existsSync(join(w.h, ".pi")), false);
+  assert.equal(JSON.parse(w.engine("doctor").stdout).pi, null);
 });

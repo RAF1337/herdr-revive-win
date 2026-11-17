@@ -28,7 +28,7 @@ import { existsSync, readFileSync, readdirSync, writeFileSync, copyFileSync, mkd
 import { createConnection } from "node:net";
 import { homedir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import {
   AGENTS, agentKey, carriedFlags, safeFlags, hookOwner, hookPayload, endAction, isOneShot, readRecord, labelArgs, clearArgs, resumedArgs,
@@ -689,7 +689,7 @@ const codexDir = () => process.env.CODEX_HOME || join(homedir(), ".codex");
 const codexHooks = () => join(codexDir(), "hooks.json");
 const codexConfig = () => join(codexDir(), "config.toml");
 /** The agents Revive supports on Windows. */
-const WIN_AGENTS = ["claude", "codex"];
+const WIN_AGENTS = ["claude", "codex", "pi"];
 /** What install says when it turns Codex's background server off, naming the file it changed. */
 export const codexNotice = (file) => `Codex: turned off its shared background server (daemon_auto_start = false in ${file}) so Revive can see which pane a session runs in. Uninstall turns it back.`;
 const piDir = () => process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent");
@@ -708,6 +708,13 @@ const EXTENSIONS = {
 const EXTENSION_AGENTS = Object.keys(EXTENSIONS);
 const extensionPath = (key) => join(EXTENSIONS[key].dir(), "extensions", "herdr-revive.ts");
 const isExtension = (key, path) => readText(path).includes(EXTENSIONS[key].marker);
+/**
+ * Windows: what Revive writes in place of the link (a link needs Developer
+ * Mode or admin rights there). pi loads it from its extensions folder and
+ * follows the re-export to the mod's own extension, which finds the engine
+ * from its real place.
+ */
+export const piStub = (source) => `// ${EXTENSIONS.pi.marker}\nexport { default } from "${pathToFileURL(source).href}";\n`;
 const factoryDir = () => agentDirs({ ...process.env, HOME: homedir() }).factory;
 const cursorDir = () => agentDirs({ ...process.env, HOME: homedir() }).cursor;
 
@@ -1081,7 +1088,7 @@ async function install(args, remove = false) {
     if (!remove && daemonSetting(next) === "on") warnings.push(`Codex's background server stays on (daemon_auto_start in ${file}): Codex sessions won't be remembered.`);
   }
   for (const key of EXTENSION_AGENTS) {
-    if (WIN || args.includes(EXTENSIONS[key].flag) || !existsSync(EXTENSIONS[key].dir())) continue;
+    if ((WIN && !WIN_AGENTS.includes(key)) || args.includes(EXTENSIONS[key].flag) || !existsSync(EXTENSIONS[key].dir())) continue;
     try {
       if (linkExtension(key, remove)) {
         changed.push(extensionPath(key));
@@ -1173,6 +1180,21 @@ function linkExtension(key, remove) {
   const target = extensionPath(key);
   const source = EXTENSIONS[key].source;
   const real = (p) => { try { return realpathSync(p); } catch { return null; } };
+  if (WIN) {
+    // A stub, not a link; one from an earlier mod folder is Revive's too, and is rewritten.
+    const ours = isExtension(key, target);
+    if (remove) {
+      if (!ours) return false;
+      rmSync(target);
+      return true;
+    }
+    const text = piStub(source);
+    if (ours && readText(target) === text) return false;
+    if (!ours && lstatSync(target, { throwIfNoEntry: false })) throw new Error(`${target} is not Revive's ${AGENTS[key].name} extension; Revive won't replace it.`);
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, text);
+    return true;
+  }
   if (remove) {
     if (!lstatSync(target, { throwIfNoEntry: false })?.isSymbolicLink() || real(target) !== real(source)) return false;
     rmSync(target);
@@ -1198,7 +1220,7 @@ export function doctorReport() {
     return {
       engine: ENGINE,
       ...hooks,
-      ...Object.fromEntries(EXTENSION_AGENTS.map((key) => [key, null])),
+      ...Object.fromEntries(EXTENSION_AGENTS.map((key) => [key, WIN_AGENTS.includes(key) && existsSync(EXTENSIONS[key].dir()) ? safe(() => isExtension(key, extensionPath(key))) : null])),
       codexDaemon: existsSync(codexDir()) ? safe(() => daemonSetting(readText(codexConfig()))) : null,
       shell: { pwsh: safe(() => readText(profilePath()).includes(BEGIN)) },
       pwshInstalled: pwshInstalled(),
