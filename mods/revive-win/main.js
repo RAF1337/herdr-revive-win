@@ -586,7 +586,8 @@ export default class Revive extends View {
       .when(back.list.length > 0, (el) => el.child(this.cameBackStrip(t, back)))
       .when(Boolean(latest), (el) => el.child(this.updateStrip(t, latest)))
       .child(div().flex_none().h(1).bg(t.border))
-      .child(div().id("revive-scroll").when(listH !== null, (el) => el.max_h(listH)).overflow_y_scrollbar()
+      // Plain overflow_y_scroll: overflow_y_scrollbar() wraps the element, and the wheel never scrolled it in a dialog.
+      .child(div().id("revive-scroll").when(listH !== null, (el) => el.max_h(listH)).min_h(0).flex_shrink(1).overflow_y_scroll()
         .when(nothing, (el) => el.child(this.emptyState(t)))
         .when(!nothing, (el) => el.child(v_flex().px(20).pt(2).pb(14)
           .child(section(t, "FOCUSED TERMINAL"))
