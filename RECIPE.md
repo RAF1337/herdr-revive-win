@@ -1,6 +1,6 @@
 # Revive for Windows
 
-Revive for Windows brings back the Claude Code, Codex or pi session a Herdr desktop-app terminal lost to a reboot, a logout or a herdr-core crash: in the same pane, in the same folder, with the same conversation and safe launch flags. Its dialog (`ctrl-shift-r`) lists remembered sessions, resumes one by hand, and forks the focused session into a new pane beside it. It is an unofficial, temporary Windows build of [dmazlum/herdr-revive](https://github.com/dmazlum/herdr-revive) (macOS and Linux), and supports Claude Code, Codex and pi in PowerShell 7 terminals only.
+Revive for Windows brings back the Claude Code, Codex or pi session a Herdr desktop-app terminal lost to a reboot, a logout or a herdr-core crash: in the same pane, in the same folder, with the same conversation and safe launch flags. Its dialog (`ctrl-shift-r`) lists remembered sessions, resumes one by hand, and forks the focused session into a new pane beside it. It is a Windows build of [dmazlum/herdr-revive](https://github.com/dmazlum/herdr-revive) (macOS and Linux), and supports Claude Code, Codex and pi in PowerShell 7 terminals only.
 
 ![Revive for Windows](preview.png)
 

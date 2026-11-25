@@ -6,7 +6,7 @@ Bring your Claude Code, Codex and pi sessions back in the **Herdr desktop app on
 
 When herdr-core loses a terminal, it gives the pane a fresh PowerShell in its last folder and never runs the original command again. Revive remembers each Claude Code, Codex and pi session on its terminal. When that terminal's new shell starts, Revive runs `claude --resume <id>` (or `codex resume <id>`, or `pi --session <id>`) in it, in the same folder and with the same safe launch flags, and your conversation is back.
 
-> **Unofficial and temporary.** This is a Windows build of [dmazlum/herdr-revive](https://github.com/dmazlum/herdr-revive) (macOS and Linux), not made or supported by its author. It is meant to last only until Herdr or the original covers Windows. It is provided as is, without warranty or support; issues are welcome but may not be answered.
+> This is a Windows build of [dmazlum/herdr-revive](https://github.com/dmazlum/herdr-revive) (macOS and Linux). It is provided as is, without warranty or support; issues are welcome but may not be answered.
 
 ## What it does
 
